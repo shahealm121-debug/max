@@ -30,7 +30,7 @@ const storage = new CloudinaryStorage({
   params: {
     folder: (req, file) => `dms/user_${req.session.userId}`,
     public_id: (req, file) => `${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '')}`,
-    resource_type: 'auto'
+    resource_type: 'raw' // Use 'raw' for all file types including PDFs, docs, etc.
   }
 });
 
@@ -341,11 +341,12 @@ app.post('/api/files/upload', requireAuth, upload.single('file'), (req, res) => 
   }
 
   const { originalname, size, mimetype, filename } = req.file;
-  const cloudinaryUrl = req.file.path; // Cloudinary URL
+  // Use secure_url returned by Cloudinary (do NOT modify this URL)
+  const cloudinaryUrl = req.file.secure_url || req.file.path; // secure_url is preferred
   const cloudinaryPublicId = req.file.filename; // Public ID from Cloudinary
   const { department = 'mainoffice', category = 'report' } = req.body;
 
-  console.log(`[UPLOAD] File: ${originalname}, Public ID: ${cloudinaryPublicId}, User: ${req.session.userId}`);
+  console.log(`[UPLOAD] File: ${originalname}, Public ID: ${cloudinaryPublicId}, URL: ${cloudinaryUrl}, User: ${req.session.userId}`);
 
   // Check for duplicate in last 5 seconds
   const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
@@ -412,7 +413,7 @@ app.get('/api/files', requireAuth, (req, res) => {
 });
 
 // Download file
-// Download file from Cloudinary (redirect to Cloudinary URL with download flag)
+// Download file from Cloudinary using secure_url directly (no modification)
 app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
   const { fileId } = req.params;
 
@@ -435,22 +436,15 @@ app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
         return res.status(404).json({ error: 'File URL not available' });
       }
 
-      console.log(`[DOWNLOAD] File: ${file.original_filename}, URL: ${file.cloudinary_url}`);
+      console.log(`[DOWNLOAD] File: ${file.original_filename}`);
 
-      // Add download parameters to Cloudinary URL
-      let downloadUrl = file.cloudinary_url;
-      const encodedFilename = encodeURIComponent(file.original_filename);
+      // Use Cloudinary secure_url directly - it's already properly authenticated
+      // Don't modify the URL as that can cause authorization issues (401 errors)
+      const downloadUrl = file.cloudinary_url;
       
-      // Add query parameters for download
-      if (downloadUrl.includes('?')) {
-        downloadUrl += `&fl_attachment&download_name=${encodedFilename}`;
-      } else {
-        downloadUrl += `?fl_attachment&download_name=${encodedFilename}`;
-      }
-
-      console.log('[DOWNLOAD] Final URL:', downloadUrl);
+      console.log('[DOWNLOAD] Redirecting to Cloudinary secure_url');
       
-      // Redirect to Cloudinary URL
+      // Redirect to Cloudinary URL - browser will handle the download
       res.redirect(downloadUrl);
     }
   );
