@@ -43,6 +43,18 @@ const upload = multer({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
+
+// Prevent caching of authenticated pages
+app.use((req, res, next) => {
+  // Set no-cache headers for dashboard and protected pages
+  if (req.path.includes('dashboard') || req.path.includes('admin')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Trust proxy for Render/production

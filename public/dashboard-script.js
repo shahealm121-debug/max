@@ -676,6 +676,20 @@ function goToAdmin() {
   window.location.href = '/admin.html';
 }
 
+// Handle back button - logout for security
+window.addEventListener('popstate', () => {
+  showToast('You have been logged out for security', 'warning', 4000);
+  // Clear user session on back button press
+  fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'include'
+  }).then(() => {
+    setTimeout(() => {
+      window.location.href = '/';
+    }, 1000);
+  });
+});
+
 // Check if user is logged in on page load
 window.addEventListener('load', async () => {
   // Load dark mode preference

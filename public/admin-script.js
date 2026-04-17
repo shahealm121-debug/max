@@ -24,7 +24,9 @@ async function loadPendingUsers() {
   usersList.innerHTML = '<p class="loading-text">Loading pending users...</p>';
 
   try {
-    const response = await fetch('/api/admin/pending-users');
+    const response = await fetch('/api/admin/pending-users', {
+      credentials: 'include'
+    });
     
     if (!response.ok) {
       usersList.innerHTML = '<p class="empty-state">Error loading pending users</p>';
@@ -63,7 +65,9 @@ async function loadAllUsers() {
   usersList.innerHTML = '<p class="loading-text">Loading users...</p>';
 
   try {
-    const response = await fetch('/api/admin/users');
+    const response = await fetch('/api/admin/users', {
+      credentials: 'include'
+    });
     
     if (!response.ok) {
       usersList.innerHTML = '<p class="empty-state">Error loading users</p>';
@@ -104,7 +108,8 @@ async function approveUser(userId) {
 
   try {
     const response = await fetch(`/api/admin/approve-user/${userId}`, {
-      method: 'POST'
+      method: 'POST',
+      credentials: 'include'
     });
 
     const data = await response.json();
@@ -131,7 +136,8 @@ async function rejectUser(userId) {
 
   try {
     const response = await fetch(`/api/admin/reject-user/${userId}`, {
-      method: 'POST'
+      method: 'POST',
+      credentials: 'include'
     });
 
     const data = await response.json();
@@ -153,7 +159,9 @@ async function rejectUser(userId) {
 // Load statistics
 async function loadStats() {
   try {
-    const response = await fetch('/api/admin/stats');
+    const response = await fetch('/api/admin/stats', {
+      credentials: 'include'
+    });
     
     if (!response.ok) {
       console.error('Error loading stats');
@@ -202,10 +210,25 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// Handle back button - logout for security
+window.addEventListener('popstate', () => {
+  // Clear admin session on back button press
+  fetch('/api/auth/logout', {
+    method: 'POST',
+    credentials: 'include'
+  }).then(() => {
+    setTimeout(() => {
+      window.location.href = '/';
+    }, 500);
+  });
+});
+
 // Check if user is admin and is logged in on page load
 window.addEventListener('load', async () => {
   try {
-    const response = await fetch('/api/auth/me');
+    const response = await fetch('/api/auth/me', {
+      credentials: 'include'
+    });
     if (!response.ok || response.status === 401) {
       window.location.href = '/';
       return;
