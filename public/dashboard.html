@@ -41,8 +41,8 @@
 
       <!-- Tab Navigation -->
       <div class="tab-navigation">
-        <button class="tab-button active" onclick="switchTab('profile')">Profile</button>
-        <button class="tab-button" onclick="switchTab('drive')">Drive</button>
+        <button class="tab-button active" data-tab="profile" onclick="switchTab('profile', event.target)">Profile</button>
+        <button class="tab-button" data-tab="drive" onclick="switchTab('drive', event.target)">Drive</button>
       </div>
 
       <!-- Profile Tab -->
@@ -61,15 +61,15 @@
           <div class="departments-container">
             <h3>Departments</h3>
             <div class="departments-grid">
-              <button class="dept-btn active" onclick="selectDepartment('mainoffice')">
+              <button class="dept-btn active" data-dept="mainoffice" onclick="selectDepartment('mainoffice', event.target)">
                 <span class="dept-icon">🏛️</span>
                 <span>Main Office</span>
               </button>
-              <button class="dept-btn" onclick="selectDepartment('garage')">
+              <button class="dept-btn" data-dept="garage" onclick="selectDepartment('garage', event.target)">
                 <span class="dept-icon">🔧</span>
                 <span>Garage</span>
               </button>
-              <button class="dept-btn" onclick="selectDepartment('crusher')">
+              <button class="dept-btn" data-dept="crusher" onclick="selectDepartment('crusher', event.target)">
                 <span class="dept-icon">⚙️</span>
                 <span>Crusher</span>
               </button>
@@ -80,15 +80,15 @@
           <div class="categories-container">
             <h3 id="selectedDeptTitle">Main Office - Documents</h3>
             <div class="categories-grid">
-              <button class="cat-btn active" onclick="selectCategory('report')">
+              <button class="cat-btn active" data-cat="report" onclick="selectCategory('report', event.target)">
                 <span class="cat-icon">📊</span>
                 <span>Reports</span>
               </button>
-              <button class="cat-btn" onclick="selectCategory('invoice')">
+              <button class="cat-btn" data-cat="invoice" onclick="selectCategory('invoice', event.target)">
                 <span class="cat-icon">📄</span>
                 <span>Invoices</span>
               </button>
-              <button class="cat-btn" onclick="selectCategory('quotation')">
+              <button class="cat-btn" data-cat="quotation" onclick="selectCategory('quotation', event.target)">
                 <span class="cat-icon">💼</span>
                 <span>Quotations</span>
               </button>

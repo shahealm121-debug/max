@@ -36,6 +36,7 @@ let selectedCategory = 'report';
 let allFiles = []; // Store all files for search functionality
 let currentPage = 1;
 const filesPerPage = 6;
+let isUploading = false; // Flag to prevent duplicate uploads
 
 // Department names mapping
 const departmentNames = {
@@ -45,14 +46,22 @@ const departmentNames = {
 };
 
 // Select department
-function selectDepartment(dept) {
+function selectDepartment(dept, eventTarget = null) {
   selectedDepartment = dept;
   
   // Update active button
   document.querySelectorAll('.dept-btn').forEach(btn => {
     btn.classList.remove('active');
   });
-  event.target.closest('.dept-btn').classList.add('active');
+  
+  // Add active class to the clicked button (if event exists)
+  if (eventTarget) {
+    eventTarget.closest('.dept-btn').classList.add('active');
+  } else {
+    // Find the button by department data attribute and mark it active
+    const btn = document.querySelector(`[data-dept="${dept}"]`);
+    if (btn) btn.classList.add('active');
+  }
   
   // Update title
   document.getElementById('selectedDeptTitle').textContent = `${departmentNames[dept]} - Documents`;
@@ -72,14 +81,22 @@ function selectDepartment(dept) {
 }
 
 // Select category
-function selectCategory(category) {
+function selectCategory(category, eventTarget = null) {
   selectedCategory = category;
   
   // Update active button
   document.querySelectorAll('.cat-btn').forEach(btn => {
     btn.classList.remove('active');
   });
-  event.target.closest('.cat-btn').classList.add('active');
+  
+  // Add active class to the clicked button (if event exists)
+  if (eventTarget) {
+    eventTarget.closest('.cat-btn').classList.add('active');
+  } else {
+    // Find the button by category data attribute and mark it active
+    const btn = document.querySelector(`[data-cat="${category}"]`);
+    if (btn) btn.classList.add('active');
+  }
   
   // Clear search input
   document.getElementById('fileSearch').value = '';
@@ -89,7 +106,7 @@ function selectCategory(category) {
 }
 
 // Switch between tabs (Profile and Drive)
-function switchTab(tabName) {
+function switchTab(tabName, eventTarget = null) {
   // Hide all tabs
   document.querySelectorAll('.tab-content').forEach(tab => {
     tab.classList.remove('active');
@@ -103,8 +120,14 @@ function switchTab(tabName) {
   // Show selected tab
   document.getElementById(tabName + 'Tab').classList.add('active');
   
-  // Add active class to clicked button
-  event.target.classList.add('active');
+  // Add active class to clicked button (if event exists)
+  if (eventTarget) {
+    eventTarget.classList.add('active');
+  } else {
+    // Find and mark button using data attribute
+    const btn = document.querySelector(`[data-tab="${tabName}"]`);
+    if (btn) btn.classList.add('active');
+  }
   
   // Load files if Drive tab is opened
   if (tabName === 'drive') {
@@ -129,22 +152,43 @@ function handleFileSelect() {
 
 // Upload selected files
 function uploadSelectedFiles() {
+  if (isUploading) {
+    console.log('Upload already in progress, ignoring click');
+    alert('Upload in progress. Please wait...');
+    return;
+  }
+  
   const fileInput = document.getElementById('fileInput');
   if (fileInput.files.length === 0) {
     alert('Please select files first');
     return;
   }
+  
+  console.log('Starting upload with ' + fileInput.files.length + ' file(s)');
   uploadMultipleFiles(fileInput.files);
 }
 
 // Upload file
 async function uploadFile() {
+  if (isUploading) {
+    alert('Upload in progress. Please wait...');
+    return;
+  }
+  
   const fileInput = document.getElementById('fileInput');
   
   if (!fileInput.files || fileInput.files.length === 0) {
     alert('Please select a file first');
     return;
   }
+
+  isUploading = true;
+  
+  // Disable upload buttons
+  const uploadBtn = document.querySelector('.btn-upload');
+  const chooseBtn = document.querySelector('[onclick*="fileInput"]');
+  if (uploadBtn) uploadBtn.disabled = true;
+  if (chooseBtn) chooseBtn.disabled = true;
 
   const file = fileInput.files[0];
   const formData = new FormData();
@@ -167,10 +211,16 @@ async function uploadFile() {
 
     alert('File uploaded successfully!');
     fileInput.value = ''; // Clear input
+    document.getElementById('selectedFilesText').textContent = '';
     loadFiles(); // Reload file list
   } catch (error) {
     alert('Error uploading file');
     console.error('Upload error:', error);
+  } finally {
+    // Re-enable upload buttons
+    if (uploadBtn) uploadBtn.disabled = false;
+    if (chooseBtn) chooseBtn.disabled = false;
+    isUploading = false;
   }
 }
 
@@ -350,20 +400,29 @@ function formatFileSize(bytes) {
 function handleDragOver(event) {
   event.preventDefault();
   event.stopPropagation();
-  document.getElementById('dropZone').style.borderColor = '#1B5E20';
-  document.getElementById('dropZone').style.backgroundColor = 'rgba(76, 175, 80, 0.15)';
+  if (!isUploading) {
+    document.getElementById('dropZone').style.borderColor = '#1B5E20';
+    document.getElementById('dropZone').style.backgroundColor = 'rgba(76, 175, 80, 0.15)';
+  }
 }
 
 function handleDragLeave(event) {
   event.preventDefault();
   event.stopPropagation();
-  document.getElementById('dropZone').style.borderColor = '#4CAF50';
-  document.getElementById('dropZone').style.backgroundColor = 'linear-gradient(135deg, rgba(76, 175, 80, 0.05) 0%, rgba(46, 125, 50, 0.05) 100%)';
+  if (!isUploading) {
+    document.getElementById('dropZone').style.borderColor = '#4CAF50';
+    document.getElementById('dropZone').style.backgroundColor = 'linear-gradient(135deg, rgba(76, 175, 80, 0.05) 0%, rgba(46, 125, 50, 0.05) 100%)';
+  }
 }
 
 function handleDropZone(event) {
   event.preventDefault();
   event.stopPropagation();
+  
+  if (isUploading) {
+    alert('Upload in progress. Please wait...');
+    return;
+  }
   
   document.getElementById('dropZone').style.borderColor = '#4CAF50';
   document.getElementById('dropZone').style.backgroundColor = 'linear-gradient(135deg, rgba(76, 175, 80, 0.05) 0%, rgba(46, 125, 50, 0.05) 100%)';
@@ -382,8 +441,41 @@ async function uploadMultipleFiles(files) {
     return;
   }
 
+  // Prevent concurrent uploads - double check
+  if (isUploading) {
+    console.log('Already uploading, preventing duplicate');
+    alert('Upload already in progress. Please wait...');
+    return;
+  }
+
+  isUploading = true;
+  console.log('Upload started, isUploading set to true');
+  
+  // Disable all upload buttons and file input
+  const uploadBtn = document.querySelector('.btn-upload');
+  const chooseBtn = document.querySelector('.btn-primary');
+  const fileInput = document.getElementById('fileInput');
+  
+  if (uploadBtn) {
+    uploadBtn.disabled = true;
+    uploadBtn.style.opacity = '0.5';
+    uploadBtn.style.cursor = 'not-allowed';
+  }
+  if (chooseBtn) {
+    chooseBtn.disabled = true;
+    chooseBtn.style.opacity = '0.5';
+    chooseBtn.style.cursor = 'not-allowed';
+  }
+  if (fileInput) {
+    fileInput.disabled = true;
+  }
+
   let uploadedCount = 0;
+  let failedCount = 0;
+  let skippedCount = 0;
+  
   for (const file of files) {
+    console.log(`Uploading file: ${file.name}`);
     const formData = new FormData();
     formData.append('file', file);
     formData.append('department', selectedDepartment);
@@ -398,21 +490,67 @@ async function uploadMultipleFiles(files) {
       const data = await response.json();
 
       if (!response.ok) {
-        console.error(`Error uploading ${file.name}:`, data.error);
+        if (data.isSkipped) {
+          console.log(`File skipped (duplicate): ${file.name}`);
+          skippedCount++;
+        } else {
+          console.error(`Error uploading ${file.name}:`, data.error);
+          failedCount++;
+        }
       } else {
+        console.log(`Successfully uploaded ${file.name}`);
         uploadedCount++;
       }
     } catch (error) {
       console.error(`Error uploading ${file.name}:`, error);
+      failedCount++;
     }
   }
 
-  if (uploadedCount > 0) {
-    alert(`${uploadedCount} file(s) uploaded successfully!`);
+  // Re-enable upload buttons and file input
+  if (uploadBtn) {
+    uploadBtn.disabled = false;
+    uploadBtn.style.opacity = '1';
+    uploadBtn.style.cursor = 'pointer';
+  }
+  if (chooseBtn) {
+    chooseBtn.disabled = false;
+    chooseBtn.style.opacity = '1';
+    chooseBtn.style.cursor = 'pointer';
+  }
+  if (fileInput) {
+    fileInput.disabled = false;
+  }
+  
+  console.log('Upload complete, isUploading set to false');
+  isUploading = false;
+
+  // Show results
+  if (uploadedCount > 0 || skippedCount > 0) {
+    let message = '';
+    if (uploadedCount > 0) {
+      message += `✅ ${uploadedCount} file(s) uploaded successfully!`;
+    }
+    if (skippedCount > 0) {
+      if (message) message += '\n';
+      message += `⏭️ ${skippedCount} file(s) skipped (duplicates)`;
+    }
+    if (failedCount > 0) {
+      if (message) message += '\n';
+      message += `❌ ${failedCount} file(s) failed`;
+    }
+    alert(message);
+    
+    // Clear file input and search
     document.getElementById('fileInput').value = '';
+    document.getElementById('selectedFilesText').textContent = '';
     document.getElementById('fileSearch').value = '';
+    
+    // Reload files and stats
     loadFiles();
     loadUserStats();
+  } else if (failedCount > 0) {
+    alert(`❌ Failed to upload ${failedCount} file(s). Please try again.`);
   }
 }
 

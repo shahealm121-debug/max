@@ -29,8 +29,8 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: (req, file) => `dms/user_${req.session.userId}`,
-    resource_type: 'auto',
-    format: async (req, file) => file.mimetype.split('/')[1]
+    public_id: (req, file) => `${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '')}`,
+    resource_type: 'auto'
   }
 });
 
@@ -52,7 +52,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: { 
     secure: false, // Set to true if using HTTPS
-    maxAge: 1000 * 60 * 60 * 24 // 24 hours
+    maxAge: 1000 * 60 * 60 * 24 * 30 // 30 days
   }
 }));
 
@@ -320,30 +320,57 @@ app.post('/api/files/upload', requireAuth, upload.single('file'), (req, res) => 
     return res.status(400).json({ error: 'No file uploaded' });
   }
 
-  const { originalname, size, mimetype } = req.file;
+  const { originalname, size, mimetype, filename } = req.file;
   const cloudinaryUrl = req.file.path; // Cloudinary URL
   const cloudinaryPublicId = req.file.filename; // Public ID from Cloudinary
   const { department = 'mainoffice', category = 'report' } = req.body;
 
-  db.run(
-    'INSERT INTO files (user_id, filename, original_filename, file_size, file_type, cloudinary_url, cloudinary_id, department, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [req.session.userId, cloudinaryPublicId, originalname, size, mimetype, cloudinaryUrl, cloudinaryPublicId, department, category],
-    function(err) {
+  console.log(`[UPLOAD] File: ${originalname}, Public ID: ${cloudinaryPublicId}, User: ${req.session.userId}`);
+
+  // Check for duplicate in last 5 seconds
+  const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+  
+  db.get(
+    'SELECT id FROM files WHERE user_id = ? AND original_filename = ? AND cloudinary_id = ? AND uploaded_at > ?',
+    [req.session.userId, originalname, cloudinaryPublicId, fiveSecondsAgo],
+    (err, duplicateFile) => {
       if (err) {
-        return res.status(500).json({ error: 'Error saving file metadata' });
+        console.error('[UPLOAD] Error checking duplicates:', err);
+        return res.status(500).json({ error: 'Database error' });
       }
 
-      res.json({
-        message: 'File uploaded successfully',
-        file: {
-          id: this.lastID,
-          filename: originalname,
-          size,
-          department,
-          category,
-          uploaded_at: new Date().toISOString()
+      if (duplicateFile) {
+        console.log('[UPLOAD] Duplicate detected, skipping');
+        return res.status(400).json({ 
+          error: 'This file was just uploaded. Please wait.',
+          isSkipped: true 
+        });
+      }
+
+      // Insert into database
+      db.run(
+        'INSERT INTO files (user_id, filename, original_filename, file_size, file_type, cloudinary_url, cloudinary_id, department, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.session.userId, cloudinaryPublicId, originalname, size, mimetype, cloudinaryUrl, cloudinaryPublicId, department, category],
+        function(err) {
+          if (err) {
+            console.error('[UPLOAD] Database insert error:', err);
+            return res.status(500).json({ error: 'Error saving file' });
+          }
+
+          console.log('[UPLOAD] File saved, ID:', this.lastID);
+          res.json({
+            message: 'File uploaded successfully',
+            file: {
+              id: this.lastID,
+              filename: originalname,
+              size,
+              department,
+              category,
+              uploaded_at: new Date().toISOString()
+            }
+          });
         }
-      });
+      );
     }
   );
 });
