@@ -394,7 +394,25 @@ function nextPage() {
 
 // Download file
 function downloadFile(fileId, filename) {
-  window.location.href = `/api/files/${fileId}/download`;
+  try {
+    showToast(`Downloading ${filename}...`, 'info', 2000);
+    console.log(`[DOWNLOAD] Starting download for file ID: ${fileId}`);
+    
+    // Create a temporary link and trigger download
+    const link = document.createElement('a');
+    link.href = `/api/files/${fileId}/download`;
+    link.setAttribute('download', filename || '');
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    console.log(`[DOWNLOAD] Download initiated for: ${filename}`);
+  } catch (error) {
+    showToast(`Error downloading file: ${error.message}`, 'error');
+    console.error('[DOWNLOAD] Error:', error);
+  }
 }
 
 // Delete file

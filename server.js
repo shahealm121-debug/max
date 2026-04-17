@@ -392,24 +392,41 @@ app.get('/api/files', requireAuth, (req, res) => {
 });
 
 // Download file
-// Download file from Cloudinary (redirect to Cloudinary URL)
+// Download file from Cloudinary (redirect to Cloudinary URL with download flag)
 app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
   const { fileId } = req.params;
 
   db.get(
-    'SELECT cloudinary_url, original_filename FROM files WHERE id = ? AND user_id = ?',
+    'SELECT cloudinary_url, original_filename, cloudinary_id FROM files WHERE id = ? AND user_id = ?',
     [fileId, req.session.userId],
     (err, file) => {
       if (err || !file) {
+        console.error('[DOWNLOAD] File not found or error:', err);
         return res.status(404).json({ error: 'File not found' });
       }
 
       if (!file.cloudinary_url) {
+        console.error('[DOWNLOAD] Cloudinary URL not available');
         return res.status(404).json({ error: 'File URL not available' });
       }
 
-      // Redirect to Cloudinary URL with forced download
-      const downloadUrl = file.cloudinary_url + '?attachment=true';
+      console.log(`[DOWNLOAD] File: ${file.original_filename}, ID: ${fileId}`);
+
+      // Add download parameters to Cloudinary URL
+      let downloadUrl = file.cloudinary_url;
+      
+      // If URL doesn't already have query params, add them
+      if (!downloadUrl.includes('?')) {
+        downloadUrl += '?fl_attachment';
+      } else {
+        downloadUrl += '&fl_attachment';
+      }
+      
+      // Add filename parameter for proper download
+      const encodedFilename = encodeURIComponent(file.original_filename);
+      downloadUrl += `&download_name=${encodedFilename}`;
+
+      console.log('[DOWNLOAD] Download URL:', downloadUrl);
       res.redirect(downloadUrl);
     }
   );
