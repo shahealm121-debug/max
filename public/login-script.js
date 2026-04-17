@@ -1,3 +1,44 @@
+// ============ NOTIFICATION SYSTEM ============
+function showToast(message, type = 'info', duration = 3000) {
+  const container = document.getElementById('toastContainer') || createToastContainer();
+  
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  
+  const icons = {
+    success: '✓',
+    error: '✕',
+    warning: '⚠',
+    info: 'ℹ'
+  };
+  
+  toast.innerHTML = `
+    <span class="toast-icon">${icons[type]}</span>
+    <span class="toast-message">${message}</span>
+    <button class="toast-close" onclick="this.parentElement.classList.add('removing'); setTimeout(() => this.parentElement.remove(), 300)">✕</button>
+  `;
+  
+  container.appendChild(toast);
+  
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.classList.add('removing');
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, duration);
+}
+
+function createToastContainer() {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  return container;
+}
+
 // Toggle between login and signup forms
 function toggleForms(event) {
   event.preventDefault();
@@ -84,11 +125,11 @@ async function handleSignup(event) {
     errorDiv.classList.remove('show');
     
     // Show success message
-    alert('Signup successful! Your account is pending admin approval. You will be able to login once approved.');
+    showToast('Signup successful! Your account is pending admin approval. Please check back soon.', 'success', 4000);
     
     // Reset form and go back to login
     document.getElementById('signupForm').reset();
-    toggleForms({preventDefault: () => {}});
+    setTimeout(() => toggleForms({preventDefault: () => {}}), 500);
     
   } catch (error) {
     errorDiv.textContent = 'An error occurred. Please try again.';

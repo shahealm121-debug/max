@@ -1,3 +1,62 @@
+// ============ NOTIFICATION SYSTEM ============
+function showToast(message, type = 'info', duration = 3000) {
+  const container = document.getElementById('toastContainer');
+  
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  
+  const icons = {
+    success: '✓',
+    error: '✕',
+    warning: '⚠',
+    info: 'ℹ'
+  };
+  
+  toast.innerHTML = `
+    <span class="toast-icon">${icons[type]}</span>
+    <span class="toast-message">${message}</span>
+    <button class="toast-close" onclick="this.parentElement.classList.add('removing'); setTimeout(() => this.parentElement.remove(), 300)">✕</button>
+  `;
+  
+  container.appendChild(toast);
+  
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.classList.add('removing');
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, duration);
+}
+
+let confirmCallback = null;
+
+function showConfirm(title, message, onConfirm) {
+  const modal = document.getElementById('confirmModal');
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMessage').textContent = message;
+  confirmCallback = onConfirm;
+  modal.style.display = 'flex';
+}
+
+function closeConfirmModal() {
+  document.getElementById('confirmModal').style.display = 'none';
+  confirmCallback = null;
+}
+
+function confirmAction() {
+  if (confirmCallback) {
+    confirmCallback();
+  }
+  closeConfirmModal();
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeConfirmModal();
+  }
+});
+
 // Show dashboard after login/signup
 async function showDashboard() {
   try {
@@ -154,13 +213,13 @@ function handleFileSelect() {
 function uploadSelectedFiles() {
   if (isUploading) {
     console.log('Upload already in progress, ignoring click');
-    alert('Upload in progress. Please wait...');
+    showToast('Upload in progress. Please wait...', 'warning');
     return;
   }
   
   const fileInput = document.getElementById('fileInput');
   if (fileInput.files.length === 0) {
-    alert('Please select files first');
+    showToast('Please select files first', 'warning');
     return;
   }
   
@@ -171,14 +230,14 @@ function uploadSelectedFiles() {
 // Upload file
 async function uploadFile() {
   if (isUploading) {
-    alert('Upload in progress. Please wait...');
+    showToast('Upload in progress. Please wait...', 'warning');
     return;
   }
   
   const fileInput = document.getElementById('fileInput');
   
   if (!fileInput.files || fileInput.files.length === 0) {
-    alert('Please select a file first');
+    showToast('Please select a file first', 'warning');
     return;
   }
 
@@ -205,16 +264,16 @@ async function uploadFile() {
     const data = await response.json();
 
     if (!response.ok) {
-      alert(data.error || 'Upload failed');
+      showToast(data.error || 'Upload failed', 'error');
       return;
     }
 
-    alert('File uploaded successfully!');
+    showToast('File uploaded successfully!', 'success');
     fileInput.value = ''; // Clear input
     document.getElementById('selectedFilesText').textContent = '';
     loadFiles(); // Reload file list
   } catch (error) {
-    alert('Error uploading file');
+    showToast('Error uploading file', 'error');
     console.error('Upload error:', error);
   } finally {
     // Re-enable upload buttons
@@ -339,29 +398,31 @@ function downloadFile(fileId, filename) {
 }
 
 // Delete file
-async function deleteFile(fileId) {
-  if (!confirm('Are you sure you want to delete this file?')) {
-    return;
-  }
+function deleteFile(fileId) {
+  showConfirm(
+    'Delete File',
+    'Are you sure you want to delete this file? This action cannot be undone.',
+    async () => {
+      try {
+        const response = await fetch(`/api/files/${fileId}`, {
+          method: 'DELETE'
+        });
 
-  try {
-    const response = await fetch(`/api/files/${fileId}`, {
-      method: 'DELETE'
-    });
+        const data = await response.json();
 
-    const data = await response.json();
+        if (!response.ok) {
+          showToast(data.error || 'Delete failed', 'error');
+          return;
+        }
 
-    if (!response.ok) {
-      alert(data.error || 'Delete failed');
-      return;
+        showToast('File deleted successfully', 'success');
+        loadFiles(); // Reload file list
+      } catch (error) {
+        showToast('Error deleting file', 'error');
+        console.error('Delete error:', error);
+      }
     }
-
-    alert('File deleted successfully');
-    loadFiles(); // Reload file list
-  } catch (error) {
-    alert('Error deleting file');
-    console.error('Delete error:', error);
-  }
+  );
 }
 
 // Handle logout
@@ -420,7 +481,7 @@ function handleDropZone(event) {
   event.stopPropagation();
   
   if (isUploading) {
-    alert('Upload in progress. Please wait...');
+    showToast('Upload in progress. Please wait...', 'warning');
     return;
   }
   
@@ -437,14 +498,14 @@ function handleDropZone(event) {
 // Upload multiple files
 async function uploadMultipleFiles(files) {
   if (!files || files.length === 0) {
-    alert('Please select files first');
+    showToast('Please select files first', 'warning');
     return;
   }
 
   // Prevent concurrent uploads - double check
   if (isUploading) {
     console.log('Already uploading, preventing duplicate');
-    alert('Upload already in progress. Please wait...');
+    showToast('Upload already in progress. Please wait...', 'warning');
     return;
   }
 
@@ -539,7 +600,7 @@ async function uploadMultipleFiles(files) {
       if (message) message += '\n';
       message += `❌ ${failedCount} file(s) failed`;
     }
-    alert(message);
+    showToast(message, 'success');
     
     // Clear file input and search
     document.getElementById('fileInput').value = '';
@@ -550,7 +611,7 @@ async function uploadMultipleFiles(files) {
     loadFiles();
     loadUserStats();
   } else if (failedCount > 0) {
-    alert(`❌ Failed to upload ${failedCount} file(s). Please try again.`);
+    showToast(`Failed to upload ${failedCount} file(s). Please try again.`, 'error');
   }
 }
 
