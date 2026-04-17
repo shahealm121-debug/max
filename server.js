@@ -477,7 +477,7 @@ app.get('/api/files', requireAuth, (req, res) => {
 });
 
 // Download file
-// Download file from Cloudinary using secure_url directly (no modification)
+// Download file from Cloudinary with fl_attachment to force download (not open in browser)
 app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
   const { fileId } = req.params;
 
@@ -502,13 +502,20 @@ app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
 
       console.log(`[DOWNLOAD] File: ${file.original_filename}`);
 
-      // Use Cloudinary secure_url directly - it's already properly authenticated
-      // Don't modify the URL as that can cause authorization issues (401 errors)
-      const downloadUrl = file.cloudinary_url;
+      // Add fl_attachment parameter to force download instead of opening in browser
+      let downloadUrl = file.cloudinary_url;
+      const encodedFilename = encodeURIComponent(file.original_filename);
       
-      console.log('[DOWNLOAD] Redirecting to Cloudinary secure_url');
+      // Add query parameters for forced download
+      if (downloadUrl.includes('?')) {
+        downloadUrl += `&fl_attachment&download_name=${encodedFilename}`;
+      } else {
+        downloadUrl += `?fl_attachment&download_name=${encodedFilename}`;
+      }
       
-      // Redirect to Cloudinary URL - browser will handle the download
+      console.log(`[DOWNLOAD] Download URL with attachment flag: ${downloadUrl}`);
+      
+      // Redirect to Cloudinary URL with attachment flag - forces browser to download
       res.redirect(downloadUrl);
     }
   );
