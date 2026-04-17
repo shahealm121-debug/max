@@ -502,20 +502,34 @@ app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
 
       console.log(`[DOWNLOAD] File: ${file.original_filename}`);
 
-      // Add fl_attachment parameter to force download instead of opening in browser
+      // Use Cloudinary fl_attachment transformation to force download
+      // Format: fl_attachment:filename.ext
+      // Insert transformation into the URL path
       let downloadUrl = file.cloudinary_url;
-      const encodedFilename = encodeURIComponent(file.original_filename);
       
-      // Add query parameters for forced download
-      if (downloadUrl.includes('?')) {
-        downloadUrl += `&fl_attachment&download_name=${encodedFilename}`;
-      } else {
-        downloadUrl += `?fl_attachment&download_name=${encodedFilename}`;
+      // Parse the URL to insert transformation
+      // Original: https://res.cloudinary.com/cloud_name/raw/upload/v.../path/filename
+      // Target:   https://res.cloudinary.com/cloud_name/raw/upload/fl_attachment:filename/v.../path/filename
+      
+      if (downloadUrl.includes('/upload/')) {
+        const parts = downloadUrl.split('/upload/');
+        const pathname = parts[1];
+        
+        // Remove version if it exists (vXXXXXXXXXX/)
+        let pathWithoutVersion = pathname;
+        const versionMatch = pathname.match(/^v\d+\//);
+        if (versionMatch) {
+          pathWithoutVersion = pathname.substring(versionMatch[0].length);
+        }
+        
+        // Add fl_attachment transformation with filename
+        const transformation = `fl_attachment:${file.original_filename}`;
+        downloadUrl = `${parts[0]}/upload/${transformation}/${pathWithoutVersion}`;
       }
       
-      console.log(`[DOWNLOAD] Download URL with attachment flag: ${downloadUrl}`);
+      console.log(`[DOWNLOAD] Download URL with attachment transformation: ${downloadUrl}`);
       
-      // Redirect to Cloudinary URL with attachment flag - forces browser to download
+      // Redirect to Cloudinary URL - forces browser to download instead of open
       res.redirect(downloadUrl);
     }
   );
