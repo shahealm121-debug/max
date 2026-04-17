@@ -417,7 +417,7 @@ app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
   const { fileId } = req.params;
 
   db.get(
-    'SELECT cloudinary_url, original_filename, cloudinary_id FROM files WHERE id = ? AND user_id = ?',
+    'SELECT cloudinary_id, original_filename FROM files WHERE id = ? AND user_id = ?',
     [fileId, req.session.userId],
     (err, file) => {
       if (err || !file) {
@@ -425,26 +425,19 @@ app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
         return res.status(404).json({ error: 'File not found' });
       }
 
-      if (!file.cloudinary_url) {
-        console.error('[DOWNLOAD] Cloudinary URL not available');
-        return res.status(404).json({ error: 'File URL not available' });
+      if (!file.cloudinary_id) {
+        console.error('[DOWNLOAD] Cloudinary ID not available');
+        return res.status(404).json({ error: 'File ID not available' });
       }
 
-      console.log(`[DOWNLOAD] File: ${file.original_filename}, ID: ${fileId}`);
+      console.log(`[DOWNLOAD] File: ${file.original_filename}, Cloudinary ID: ${file.cloudinary_id}`);
 
-      // Add download parameters to Cloudinary URL
-      let downloadUrl = file.cloudinary_url;
-      
-      // If URL doesn't already have query params, add them
-      if (!downloadUrl.includes('?')) {
-        downloadUrl += '?fl_attachment';
-      } else {
-        downloadUrl += '&fl_attachment';
-      }
-      
-      // Add filename parameter for proper download
+      // Construct proper Cloudinary URL with download parameters
+      const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
       const encodedFilename = encodeURIComponent(file.original_filename);
-      downloadUrl += `&download_name=${encodedFilename}`;
+      
+      // Format: https://res.cloudinary.com/{cloud_name}/image/upload/fl_attachment;download_name:{filename}/{public_id}
+      const downloadUrl = `https://res.cloudinary.com/${cloudName}/auto/upload/fl_attachment;download_name:${encodedFilename}/${file.cloudinary_id}`;
 
       console.log('[DOWNLOAD] Download URL:', downloadUrl);
       res.redirect(downloadUrl);
