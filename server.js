@@ -39,74 +39,28 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
 });
 
-// Custom SQLite Session Store
-class SqliteSessionStore extends session.Store {
-  constructor(database) {
-    super();
-    this.db = database;
-    this.init();
-  }
-
-  init() {
-    this.db.run(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        sid TEXT PRIMARY KEY,
-        expires INTEGER,
-        sess TEXT
-      )
-    `, (err) => {
-      if (err) console.error('Error creating sessions table:', err);
-      else console.log('Sessions table ready');
-    });
-  }
-
-  get(sid, callback) {
-    this.db.get('SELECT sess FROM sessions WHERE sid = ? AND expires > ?', [sid, Date.now()], (err, row) => {
-      if (err) return callback(err);
-      if (!row) return callback(null, null);
-      try {
-        callback(null, JSON.parse(row.sess));
-      } catch (e) {
-        callback(e);
-      }
-    });
-  }
-
-  set(sid, sess, callback) {
-    const expires = sess.cookie.expires || (Date.now() + 30 * 24 * 60 * 60 * 1000);
-    const sessStr = JSON.stringify(sess);
-    
-    this.db.run(
-      'INSERT OR REPLACE INTO sessions (sid, expires, sess) VALUES (?, ?, ?)',
-      [sid, expires, sessStr],
-      callback || (() => {})
-    );
-  }
-
-  destroy(sid, callback) {
-    this.db.run('DELETE FROM sessions WHERE sid = ?', [sid], callback || (() => {}));
-  }
-}
-
-const sessionStore = new SqliteSessionStore(db);
-
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Trust proxy for Render/production
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Session middleware
 app.use(session({
-  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
+  proxy: process.env.NODE_ENV === 'production',
   cookie: { 
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
     httpOnly: true,
     sameSite: 'lax',
-    maxAge: 1000 * 60 * 60 * 24 * 30 // 30 days
+    maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
   }
 }));
 
