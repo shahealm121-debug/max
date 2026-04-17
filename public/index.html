@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - File Storage System</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Logo Section -->
+    <!-- Logo size: 120x120px for login page -->
+    <div class="logo-section">
+      <img src="logo.png" alt="Company Logo" class="logo" width="120" height="120">
+      <h1 class="company-name">Dhofar Limestone Company</h1>
+      <p class="company-subtitle">Document Management System</p>
+    </div>
+    
+    <!-- Auth Forms -->
+    <div id="authForms" class="auth-section">
+      <!-- Login Form -->
+      <div id="loginForm" class="form-container visible">
+        <h2>Login</h2>
+        <form onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label for="loginUsername">Username:</label>
+            <input type="text" id="loginUsername" name="username" required>
+          </div>
+          <div class="form-group">
+            <label for="loginPassword">Password:</label>
+            <input type="password" id="loginPassword" name="password" required>
+          </div>
+          <button type="submit" class="btn-primary">Login</button>
+          <p class="toggle-text">
+            Don't have an account? <a href="#" onclick="toggleForms(event)">Sign Up</a>
+          </p>
+        </form>
+        <div id="loginError" class="error-message"></div>
+      </div>
+
+      <!-- Signup Form -->
+      <div id="signupForm" class="form-container hidden">
+        <h2>Sign Up</h2>
+        <form onsubmit="handleSignup(event)">
+          <div class="form-group">
+            <label for="signupUsername">Username:</label>
+            <input type="text" id="signupUsername" name="username" required>
+          </div>
+          <div class="form-group">
+            <label for="signupEmail">Email:</label>
+            <input type="email" id="signupEmail" name="email" required>
+          </div>
+          <div class="form-group">
+            <label for="signupPassword">Password:</label>
+            <input type="password" id="signupPassword" name="password" required>
+          </div>
+          <div class="form-group">
+            <label for="signupConfirmPassword">Confirm Password:</label>
+            <input type="password" id="signupConfirmPassword" name="confirmPassword" required>
+          </div>
+          <button type="submit" class="btn-primary">Sign Up</button>
+          <p class="toggle-text">
+            Already have an account? <a href="#" onclick="toggleForms(event)">Login</a>
+          </p>
+        </form>
+        <div id="signupError" class="error-message"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="login-script.js"></script>
+</body>
+</html>

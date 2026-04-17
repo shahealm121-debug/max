@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - File Storage System</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container dashboard-page">
+    <!-- Dashboard -->
+    <div id="dashboard" class="dashboard">
+      <div class="dashboard-header">
+        <!-- Logo size: 60x60px for dashboard header -->
+        <div class="company-info">
+          <img src="logo.png" alt="Company Logo" class="header-logo" width="60" height="60">
+          <div class="company-text">
+            <h1 class="company-name">Dhofar Limestone Company</h1>
+            <p class="company-subtitle">Document Management System</p>
+          </div>
+        </div>
+        <h2>Welcome, <span id="displayUsername"></span>!</h2>
+        <div class="header-actions">
+          <button id="darkModeToggle" class="btn-dark-mode" onclick="toggleDarkMode()">🌙 Dark Mode</button>
+          <button id="adminPanelBtn" class="btn-admin" style="display:none;" onclick="goToAdmin()">Admin Panel</button>
+          <button onclick="handleLogout()" class="btn-logout">Logout</button>
+        </div>
+      </div>
+
+      <!-- Statistics -->
+      <div class="stats-container" id="statsContainer" style="display:none;">
+        <div class="stat-card">
+          <div class="stat-number" id="userFiles">0</div>
+          <div class="stat-label">Your Files</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="userStorage">0 MB</div>
+          <div class="stat-label">Storage Used</div>
+        </div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="tab-navigation">
+        <button class="tab-button active" onclick="switchTab('profile')">Profile</button>
+        <button class="tab-button" onclick="switchTab('drive')">Drive</button>
+      </div>
+
+      <!-- Profile Tab -->
+      <div id="profileTab" class="tab-content active">
+        <div class="user-info">
+          <p><strong>Username:</strong> <span id="userUsername"></span></p>
+          <p><strong>Email:</strong> <span id="userEmail"></span></p>
+          <p><strong>Member Since:</strong> <span id="userCreatedAt"></span></p>
+        </div>
+      </div>
+
+      <!-- Drive Tab -->
+      <div id="driveTab" class="tab-content">
+        <div class="drive-section">
+          <!-- Department Navigation -->
+          <div class="departments-container">
+            <h3>Departments</h3>
+            <div class="departments-grid">
+              <button class="dept-btn active" onclick="selectDepartment('mainoffice')">
+                <span class="dept-icon">🏛️</span>
+                <span>Main Office</span>
+              </button>
+              <button class="dept-btn" onclick="selectDepartment('garage')">
+                <span class="dept-icon">🔧</span>
+                <span>Garage</span>
+              </button>
+              <button class="dept-btn" onclick="selectDepartment('crusher')">
+                <span class="dept-icon">⚙️</span>
+                <span>Crusher</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Category Navigation -->
+          <div class="categories-container">
+            <h3 id="selectedDeptTitle">Main Office - Documents</h3>
+            <div class="categories-grid">
+              <button class="cat-btn active" onclick="selectCategory('report')">
+                <span class="cat-icon">📊</span>
+                <span>Reports</span>
+              </button>
+              <button class="cat-btn" onclick="selectCategory('invoice')">
+                <span class="cat-icon">📄</span>
+                <span>Invoices</span>
+              </button>
+              <button class="cat-btn" onclick="selectCategory('quotation')">
+                <span class="cat-icon">💼</span>
+                <span>Quotations</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- File Upload Area -->
+          <div class="file-upload-area" id="dropZone" ondrop="handleDropZone(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+            <p style="margin-bottom: 10px;">📁 Drag and drop your files here or click to select</p>
+            <input type="file" id="fileInput" multiple onchange="handleFileSelect()">
+            <div class="upload-buttons">
+              <button onclick="document.getElementById('fileInput').click()" class="btn-primary">Choose Files</button>
+              <button onclick="uploadSelectedFiles()" class="btn-upload">Upload Selected Files</button>
+            </div>
+            <p id="selectedFilesText" class="selected-files-text"></p>
+          </div>
+
+          <!-- Search Bar -->
+          <div class="search-container">
+            <div class="search-input-wrapper">
+              <input type="text" id="fileSearch" placeholder="Search files by name..." oninput="filterFiles()">
+              <span class="search-icon">🔍</span>
+            </div>
+          </div>
+
+          <!-- Files List -->
+          <div class="files-list-container">
+            <h3 id="filesListTitle">Files</h3>
+            <div id="filesList" class="files-list">
+              <p class="loading-text">Loading files...</p>
+            </div>
+            <div class="pagination-container">
+              <button id="prevPageBtn" class="pagination-btn" onclick="prevPage()">Previous</button>
+              <span id="pageInfo" class="pagination-info"></span>
+              <button id="nextPageBtn" class="pagination-btn" onclick="nextPage()">Next</button>
+            </div>
+          </div>
+
+          <div id="uploadProgress" class="progress hidden">
+            <div class="progress-bar"></div>
+            <span id="progressText">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="dashboard-script.js"></script>
+</body>
+</html>

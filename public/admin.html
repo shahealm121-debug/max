@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - File Storage System</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container dashboard-page">
+    <!-- Admin Dashboard -->
+    <div id="adminPanel" class="dashboard">
+      <div class="dashboard-header">
+        <h2>Admin Panel</h2>
+        <div class="header-actions">
+          <button id="darkModeToggle" class="btn-dark-mode" onclick="toggleDarkMode()">🌙 Dark Mode</button>
+          <button onclick="handleLogout()" class="btn-logout">Logout</button>
+        </div>
+      </div>
+
+      <!-- Statistics -->
+      <div class="stats-container">
+        <div class="stat-card">
+          <div class="stat-number" id="totalUsers">0</div>
+          <div class="stat-label">Total Users</div>
+        </div>
+        <div class="stat-card pending">
+          <div class="stat-number" id="pendingApprovals">0</div>
+          <div class="stat-label">Pending Approvals</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="totalFiles">0</div>
+          <div class="stat-label">Total Files</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="totalStorage">0 MB</div>
+          <div class="stat-label">Total Storage</div>
+        </div>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="tab-navigation">
+        <button class="tab-button active" onclick="switchAdminTab('pending')">Pending Users</button>
+        <button class="tab-button" onclick="switchAdminTab('all')">All Users</button>
+      </div>
+
+      <!-- Pending Users Tab -->
+      <div id="pendingTab" class="tab-content active">
+        <h3>Users Pending Approval</h3>
+        <div id="pendingUsersList" class="users-list">
+          <p class="loading-text">Loading pending users...</p>
+        </div>
+      </div>
+
+      <!-- All Users Tab -->
+      <div id="allTab" class="tab-content">
+        <h3>All Users</h3>
+        <div id="allUsersList" class="users-list">
+          <p class="loading-text">Loading users...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="admin-script.js"></script>
+</body>
+</html>
