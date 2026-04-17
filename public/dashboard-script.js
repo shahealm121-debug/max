@@ -60,7 +60,9 @@ document.addEventListener('keydown', (e) => {
 // Show dashboard after login/signup
 async function showDashboard() {
   try {
-    const response = await fetch('/api/auth/me');
+    const response = await fetch('/api/auth/me', {
+      credentials: 'include'
+    });
     if (response.ok) {
       const userData = await response.json();
       
@@ -258,6 +260,7 @@ async function uploadFile() {
   try {
     const response = await fetch('/api/files/upload', {
       method: 'POST',
+      credentials: 'include',
       body: formData
     });
 
@@ -293,7 +296,9 @@ async function loadFiles() {
     params.append('department', selectedDepartment);
     params.append('category', selectedCategory);
 
-    const response = await fetch(`/api/files?${params.toString()}`);
+    const response = await fetch(`/api/files?${params.toString()}`, {
+      credentials: 'include'
+    });
     
     if (!response.ok) {
       filesList.innerHTML = '<p class="empty-state">Error loading files</p>';
@@ -423,7 +428,8 @@ function deleteFile(fileId) {
     async () => {
       try {
         const response = await fetch(`/api/files/${fileId}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          credentials: 'include'
         });
 
         const data = await response.json();
@@ -447,7 +453,8 @@ function deleteFile(fileId) {
 async function handleLogout() {
   try {
     const response = await fetch('/api/auth/logout', {
-      method: 'POST'
+      method: 'POST',
+      credentials: 'include'
     });
     
     if (response.ok) {
@@ -563,6 +570,7 @@ async function uploadMultipleFiles(files) {
     try {
       const response = await fetch('/api/files/upload', {
         method: 'POST',
+        credentials: 'include',
         body: formData
       });
 
@@ -636,7 +644,9 @@ async function uploadMultipleFiles(files) {
 // Load user statistics
 async function loadUserStats() {
   try {
-    const response = await fetch('/api/user/stats');
+    const response = await fetch('/api/user/stats', {
+      credentials: 'include'
+    });
     
     if (response.ok) {
       const stats = await response.json();
@@ -676,7 +686,9 @@ window.addEventListener('load', async () => {
   }
 
   try {
-    const response = await fetch('/api/auth/me');
+    const response = await fetch('/api/auth/me', {
+      credentials: 'include'
+    });
     if (!response.ok) {
       // Not logged in, redirect to login page
       window.location.href = '/';
