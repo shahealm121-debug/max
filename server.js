@@ -7,29 +7,30 @@ import fs from 'fs';
 import db from './database.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Set up uploads directory
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const userDir = path.join(uploadsDir, `user_${req.session.userId}`);
-    if (!fs.existsSync(userDir)) {
-      fs.mkdirSync(userDir, { recursive: true });
-    }
-    cb(null, userDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}_${file.originalname}`;
-    cb(null, uniqueName);
+// Configure multer for Cloudinary storage
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: (req, file) => `dms/user_${req.session.userId}`,
+    resource_type: 'auto',
+    format: async (req, file) => file.mimetype.split('/')[1]
   }
 });
 
@@ -313,22 +314,22 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 
 // File Routes
 
-// Upload file
+// Upload file to Cloudinary
 app.post('/api/files/upload', requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
 
-  const { filename, originalname, size, mimetype } = req.file;
+  const { originalname, size, mimetype } = req.file;
+  const cloudinaryUrl = req.file.path; // Cloudinary URL
+  const cloudinaryPublicId = req.file.filename; // Public ID from Cloudinary
   const { department = 'mainoffice', category = 'report' } = req.body;
 
   db.run(
-    'INSERT INTO files (user_id, filename, original_filename, file_size, file_type, department, category) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [req.session.userId, filename, originalname, size, mimetype, department, category],
+    'INSERT INTO files (user_id, filename, original_filename, file_size, file_type, cloudinary_url, cloudinary_id, department, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [req.session.userId, cloudinaryPublicId, originalname, size, mimetype, cloudinaryUrl, cloudinaryPublicId, department, category],
     function(err) {
       if (err) {
-        // Delete uploaded file if DB insert fails
-        fs.unlinkSync(req.file.path);
         return res.status(500).json({ error: 'Error saving file metadata' });
       }
 
@@ -364,45 +365,48 @@ app.get('/api/files', requireAuth, (req, res) => {
 });
 
 // Download file
+// Download file from Cloudinary (redirect to Cloudinary URL)
 app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
   const { fileId } = req.params;
 
   db.get(
-    'SELECT filename, original_filename FROM files WHERE id = ? AND user_id = ?',
+    'SELECT cloudinary_url, original_filename FROM files WHERE id = ? AND user_id = ?',
     [fileId, req.session.userId],
     (err, file) => {
       if (err || !file) {
         return res.status(404).json({ error: 'File not found' });
       }
 
-      const filePath = path.join(uploadsDir, `user_${req.session.userId}`, file.filename);
-
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'File does not exist on disk' });
+      if (!file.cloudinary_url) {
+        return res.status(404).json({ error: 'File URL not available' });
       }
 
-      res.download(filePath, file.original_filename);
+      // Redirect to Cloudinary URL with forced download
+      const downloadUrl = file.cloudinary_url + '?attachment=true';
+      res.redirect(downloadUrl);
     }
   );
 });
 
-// Delete file
+// Delete file from Cloudinary and database
 app.delete('/api/files/:fileId', requireAuth, (req, res) => {
   const { fileId } = req.params;
 
   db.get(
-    'SELECT filename FROM files WHERE id = ? AND user_id = ?',
+    'SELECT cloudinary_id FROM files WHERE id = ? AND user_id = ?',
     [fileId, req.session.userId],
     (err, file) => {
       if (err || !file) {
         return res.status(404).json({ error: 'File not found' });
       }
 
-      const filePath = path.join(uploadsDir, `user_${req.session.userId}`, file.filename);
-
-      // Delete file from disk
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      // Delete from Cloudinary
+      if (file.cloudinary_id) {
+        cloudinary.uploader.destroy(file.cloudinary_id, (error, result) => {
+          if (error) {
+            console.error('Cloudinary delete error:', error);
+          }
+        });
       }
 
       // Delete from database

@@ -47,6 +47,8 @@ function initDatabase() {
       original_filename TEXT NOT NULL,
       file_size INTEGER NOT NULL,
       file_type TEXT NOT NULL,
+      cloudinary_url TEXT,
+      cloudinary_id TEXT,
       department TEXT DEFAULT 'mainoffice',
       category TEXT DEFAULT 'report',
       uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -81,6 +83,22 @@ function initDatabase() {
         db.run("ALTER TABLE files ADD COLUMN category TEXT DEFAULT 'report'", (alterErr) => {
           if (alterErr) {
             console.error('Error adding category column:', alterErr);
+          }
+        });
+      }
+
+      if (!names.includes('cloudinary_url')) {
+        db.run("ALTER TABLE files ADD COLUMN cloudinary_url TEXT", (alterErr) => {
+          if (alterErr) {
+            console.error('Error adding cloudinary_url column:', alterErr);
+          }
+        });
+      }
+
+      if (!names.includes('cloudinary_id')) {
+        db.run("ALTER TABLE files ADD COLUMN cloudinary_id TEXT", (alterErr) => {
+          if (alterErr) {
+            console.error('Error adding cloudinary_id column:', alterErr);
           }
         });
       }
