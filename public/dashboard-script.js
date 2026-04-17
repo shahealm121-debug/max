@@ -400,40 +400,26 @@ function nextPage() {
 // Download file
 function downloadFile(fileId, filename) {
   try {
-    showToast(`Downloading ${filename}...`, 'info', 2000);
+    showToast(`Downloading ${filename}...`, 'info', 3000);
     console.log(`[DOWNLOAD] Starting download for file ID: ${fileId}`);
     
-    // Fetch download URL with credentials to ensure session is sent
-    fetch(`/api/files/${fileId}/download`, {
-      credentials: 'include'
-    })
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('Download failed: ' + response.status);
-      }
-      return response.json();
-    })
-    .then(data => {
-      if (data.downloadUrl) {
-        // Open download URL in new window/tab to trigger download
-        const link = document.createElement('a');
-        link.href = data.downloadUrl;
-        link.setAttribute('download', data.filename || '');
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        console.log(`[DOWNLOAD] Download initiated for: ${filename}`);
-        showToast(`${filename} started downloading`, 'success', 2000);
-      }
-    })
-    .catch(error => {
-      showToast(`Error downloading file: ${error.message}`, 'error');
-      console.error('[DOWNLOAD] Error:', error);
-    });
+    // Simple approach: direct download via link with proper headers
+    const link = document.createElement('a');
+    link.href = `/api/files/${fileId}/download?filename=${encodeURIComponent(filename)}`;
+    link.setAttribute('download', filename || '');
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    
+    // Use setTimeout to ensure element is in DOM before clicking
+    setTimeout(() => {
+      link.click();
+      setTimeout(() => document.body.removeChild(link), 100);
+      console.log(`[DOWNLOAD] Download initiated for: ${filename}`);
+      showToast(`${filename} started downloading`, 'success', 2000);
+    }, 100);
   } catch (error) {
-    showToast(`Error downloading file: ${error.message}`, 'error');
+    showToast(`Error: ${error.message}`, 'error', 4000);
     console.error('[DOWNLOAD] Error:', error);
   }
 }

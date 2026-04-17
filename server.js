@@ -420,13 +420,18 @@ app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
     'SELECT cloudinary_url, original_filename FROM files WHERE id = ? AND user_id = ?',
     [fileId, req.session.userId],
     (err, file) => {
-      if (err || !file) {
-        console.error('[DOWNLOAD] File not found or error:', err);
+      if (err) {
+        console.error('[DOWNLOAD] Database error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!file) {
+        console.error('[DOWNLOAD] File not found for user:', req.session.userId);
         return res.status(404).json({ error: 'File not found' });
       }
 
       if (!file.cloudinary_url) {
-        console.error('[DOWNLOAD] Cloudinary URL not available');
+        console.error('[DOWNLOAD] Cloudinary URL not available for file:', fileId);
         return res.status(404).json({ error: 'File URL not available' });
       }
 
@@ -443,14 +448,10 @@ app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
         downloadUrl += `?fl_attachment&download_name=${encodedFilename}`;
       }
 
-      console.log('[DOWNLOAD] Download URL:', downloadUrl);
+      console.log('[DOWNLOAD] Final URL:', downloadUrl);
       
-      // Return the download URL as JSON and let frontend handle the redirect
-      res.json({ 
-        success: true,
-        downloadUrl: downloadUrl,
-        filename: file.original_filename
-      });
+      // Redirect to Cloudinary URL
+      res.redirect(downloadUrl);
     }
   );
 });
