@@ -24,19 +24,41 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Configure multer for Cloudinary storage
+// Configure multer for Cloudinary storage with proper handling for all file types
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: (req, file) => `dms/user_${req.session.userId}`,
     public_id: (req, file) => `${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '')}`,
-    resource_type: 'raw' // Use 'raw' for all file types including PDFs, docs, etc.
+    resource_type: (req, file) => {
+      // Determine resource_type based on file type
+      // PDF, ZIP, and most documents should use 'raw'
+      const ext = path.extname(file.originalname).toLowerCase();
+      const rawTypes = ['.pdf', '.zip', '.rar', '.7z', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.json'];
+      
+      if (rawTypes.includes(ext)) {
+        return 'raw';
+      }
+      
+      // Images can use auto
+      if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'].includes(ext)) {
+        return 'auto';
+      }
+      
+      // Default to raw for any unknown type
+      return 'raw';
+    }
   }
 });
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (req, file, cb) => {
+    // Allow all file types - Cloudinary will handle them
+    console.log(`[UPLOAD] File received: ${file.originalname}, MIME: ${file.mimetype}`);
+    cb(null, true);
+  }
 });
 
 // Middleware
@@ -80,6 +102,30 @@ app.use(session({
 function requireAuth(req, res, next) {
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Not authenticated' });
+  }
+  next();
+}
+
+// Error handling middleware for multer
+function handleMulterError(err, req, res, next) {
+  if (err) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      console.error('[UPLOAD] File too large:', err.message);
+      return res.status(400).json({ error: 'File too large. Maximum size is 50MB.' });
+    }
+    if (err.code === 'LIMIT_PART_COUNT') {
+      return res.status(400).json({ error: 'Too many file parts' });
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ error: 'Too many files' });
+    }
+    // Cloudinary errors
+    if (err.message && err.message.includes('Cloudinary')) {
+      console.error('[UPLOAD] Cloudinary error:', err.message);
+      return res.status(500).json({ error: 'Upload failed. Please try again.' });
+    }
+    console.error('[UPLOAD] Upload error:', err);
+    return res.status(500).json({ error: 'Upload failed: ' + err.message });
   }
   next();
 }
@@ -346,7 +392,16 @@ app.post('/api/files/upload', requireAuth, upload.single('file'), (req, res) => 
   const cloudinaryPublicId = req.file.filename; // Public ID from Cloudinary
   const { department = 'mainoffice', category = 'report' } = req.body;
 
-  console.log(`[UPLOAD] File: ${originalname}, Public ID: ${cloudinaryPublicId}, URL: ${cloudinaryUrl}, User: ${req.session.userId}`);
+  // Log detailed info for PDF and ZIP files
+  const ext = path.extname(originalname).toLowerCase();
+  if (['.pdf', '.zip', '.rar', '.7z'].includes(ext)) {
+    console.log(`[UPLOAD] ${ext.toUpperCase()} File: ${originalname}`);
+    console.log(`[UPLOAD] Size: ${(size / 1024 / 1024).toFixed(2)}MB, MIME: ${mimetype}`);
+    console.log(`[UPLOAD] Cloudinary Public ID: ${cloudinaryPublicId}`);
+    console.log(`[UPLOAD] Cloudinary URL: ${cloudinaryUrl}`);
+  } else {
+    console.log(`[UPLOAD] File: ${originalname}, Public ID: ${cloudinaryPublicId}, URL: ${cloudinaryUrl}`);
+  }
 
   // Check for duplicate in last 5 seconds
   const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
@@ -378,7 +433,7 @@ app.post('/api/files/upload', requireAuth, upload.single('file'), (req, res) => 
             return res.status(500).json({ error: 'Error saving file' });
           }
 
-          console.log('[UPLOAD] File saved, ID:', this.lastID);
+          console.log(`[UPLOAD] ✅ File saved successfully, ID: ${this.lastID}`);
           res.json({
             message: 'File uploaded successfully',
             file: {
@@ -394,6 +449,15 @@ app.post('/api/files/upload', requireAuth, upload.single('file'), (req, res) => 
       );
     }
   );
+});
+
+// Error handling for upload route
+app.use((err, req, res, next) => {
+  if (req.path === '/api/files/upload') {
+    handleMulterError(err, req, res, next);
+  } else {
+    next(err);
+  }
 });
 
 // List user files
