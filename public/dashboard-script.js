@@ -403,17 +403,35 @@ function downloadFile(fileId, filename) {
     showToast(`Downloading ${filename}...`, 'info', 2000);
     console.log(`[DOWNLOAD] Starting download for file ID: ${fileId}`);
     
-    // Create a temporary link and trigger download
-    const link = document.createElement('a');
-    link.href = `/api/files/${fileId}/download`;
-    link.setAttribute('download', filename || '');
-    link.style.display = 'none';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    console.log(`[DOWNLOAD] Download initiated for: ${filename}`);
+    // Fetch download URL with credentials to ensure session is sent
+    fetch(`/api/files/${fileId}/download`, {
+      credentials: 'include'
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error('Download failed: ' + response.status);
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (data.downloadUrl) {
+        // Open download URL in new window/tab to trigger download
+        const link = document.createElement('a');
+        link.href = data.downloadUrl;
+        link.setAttribute('download', data.filename || '');
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log(`[DOWNLOAD] Download initiated for: ${filename}`);
+        showToast(`${filename} started downloading`, 'success', 2000);
+      }
+    })
+    .catch(error => {
+      showToast(`Error downloading file: ${error.message}`, 'error');
+      console.error('[DOWNLOAD] Error:', error);
+    });
   } catch (error) {
     showToast(`Error downloading file: ${error.message}`, 'error');
     console.error('[DOWNLOAD] Error:', error);

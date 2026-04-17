@@ -444,7 +444,13 @@ app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
       }
 
       console.log('[DOWNLOAD] Download URL:', downloadUrl);
-      res.redirect(downloadUrl);
+      
+      // Return the download URL as JSON and let frontend handle the redirect
+      res.json({ 
+        success: true,
+        downloadUrl: downloadUrl,
+        filename: file.original_filename
+      });
     }
   );
 });
