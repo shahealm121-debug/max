@@ -503,31 +503,16 @@ app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
       console.log(`[DOWNLOAD] File: ${file.original_filename}`);
 
       // Use Cloudinary fl_attachment transformation to force download
-      // Format: fl_attachment:filename.ext
-      // Insert transformation into the URL path
+      // Add fl_attachment to beginning of the path when inserting after /upload/
       let downloadUrl = file.cloudinary_url;
       
-      // Parse the URL to insert transformation
-      // Original: https://res.cloudinary.com/cloud_name/raw/upload/v.../path/filename
-      // Target:   https://res.cloudinary.com/cloud_name/raw/upload/fl_attachment:filename/v.../path/filename
-      
+      // Simply add fl_attachment flag as a transformation parameter before the file path
       if (downloadUrl.includes('/upload/')) {
-        const parts = downloadUrl.split('/upload/');
-        const pathname = parts[1];
-        
-        // Remove version if it exists (vXXXXXXXXXX/)
-        let pathWithoutVersion = pathname;
-        const versionMatch = pathname.match(/^v\d+\//);
-        if (versionMatch) {
-          pathWithoutVersion = pathname.substring(versionMatch[0].length);
-        }
-        
-        // Add fl_attachment transformation with filename
-        const transformation = `fl_attachment:${file.original_filename}`;
-        downloadUrl = `${parts[0]}/upload/${transformation}/${pathWithoutVersion}`;
+        // Insert fl_attachment right after /upload/
+        downloadUrl = downloadUrl.replace('/upload/', '/upload/fl_attachment/');
       }
       
-      console.log(`[DOWNLOAD] Download URL with attachment transformation: ${downloadUrl}`);
+      console.log(`[DOWNLOAD] Download URL: ${downloadUrl}`);
       
       // Redirect to Cloudinary URL - forces browser to download instead of open
       res.redirect(downloadUrl);
