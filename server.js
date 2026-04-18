@@ -3,13 +3,13 @@ import session from 'express-session';
 import bcryptjs from 'bcryptjs';
 import cors from 'cors';
 import multer from 'multer';
-import fs from 'fs';
-import db from './database.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import dotenv from 'dotenv';
+import { connectDB, db } from './database.js';
+import mongoose from 'mongoose';
 
 dotenv.config();
 
@@ -98,6 +98,21 @@ app.use(session({
   }
 }));
 
+// Initialize server and database
+async function initializeServer() {
+  try {
+    // Connect to MongoDB
+    await connectDB();
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server is running on http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+}
+
 // Middleware to check if user is authenticated
 function requireAuth(req, res, next) {
   if (!req.session.userId) {
@@ -131,13 +146,14 @@ function handleMulterError(err, req, res, next) {
 }
 
 // Middleware to check if user is admin
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
   if (!req.session.userId) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
   
-  db.get('SELECT role FROM users WHERE id = ?', [req.session.userId], (err, user) => {
-    if (err || !user) {
+  try {
+    const user = await db.getUserById(req.session.userId);
+    if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
     
@@ -146,129 +162,136 @@ function requireAdmin(req, res, next) {
     }
     
     next();
-  });
+  } catch (err) {
+    res.status(500).json({ error: 'Authorization error' });
+  }
 }
 
 // Routes
 
 // Signup
-app.post('/api/auth/signup', (req, res) => {
-  const { username, email, password, confirmPassword } = req.body;
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { username, email, password, confirmPassword } = req.body;
 
-  if (!username || !email || !password || !confirmPassword) {
-    return res.status(400).json({ error: 'All fields are required' });
-  }
-
-  if (password !== confirmPassword) {
-    return res.status(400).json({ error: 'Passwords do not match' });
-  }
-
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
-
-  // Hash password
-  const hashedPassword = bcryptjs.hashSync(password, 10);
-
-  // Insert user into database with pending status
-  db.run(
-    'INSERT INTO users (username, email, password, role, status) VALUES (?, ?, ?, ?, ?)',
-    [username, email, hashedPassword, 'user', 'pending'],
-    function(err) {
-      if (err) {
-        if (err.message.includes('UNIQUE constraint failed')) {
-          return res.status(400).json({ error: 'Username or email already exists' });
-        }
-        return res.status(500).json({ error: 'Error creating user' });
-      }
-
-      res.json({ 
-        message: 'Signup successful. Waiting for admin approval.', 
-        user: { id: this.lastID, username, email, status: 'pending' } 
-      });
+    if (!username || !email || !password || !confirmPassword) {
+      return res.status(400).json({ error: 'All fields are required' });
     }
-  );
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({ error: 'Passwords do not match' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Check if user already exists
+    const existingUser = await db.User.findOne({
+      $or: [{ username }, { email }]
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ error: 'Username or email already exists' });
+    }
+
+    // Create new user
+    const user = await db.createUser(username, email, password, 'user', 'pending');
+
+    res.json({
+      message: 'Signup successful. Waiting for admin approval.',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        status: user.status
+      }
+    });
+  } catch (err) {
+    console.error('Signup error:', err);
+    res.status(500).json({ error: 'Error creating user' });
+  }
 });
 
 // Login
-app.post('/api/auth/login', (req, res) => {
-  const { username, password } = req.body;
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password are required' });
-  }
-
-  db.get(
-    'SELECT * FROM users WHERE username = ?',
-    [username],
-    (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-
-      if (!user) {
-        return res.status(401).json({ error: 'Invalid username or password' });
-      }
-
-      // Check if user is approved
-      if (user.status !== 'approved') {
-        return res.status(403).json({ error: 'Your account is pending admin approval' });
-      }
-
-      // Compare password
-      const isValidPassword = bcryptjs.compareSync(password, user.password);
-
-      if (!isValidPassword) {
-        return res.status(401).json({ error: 'Invalid username or password' });
-      }
-
-      // Set session
-      req.session.userId = user.id;
-      req.session.username = user.username;
-      req.session.userRole = user.role;
-
-      res.json({ 
-        message: 'Login successful', 
-        user: { id: user.id, username: user.username, email: user.email, role: user.role } 
-      });
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
     }
-  );
+
+    const user = await db.getUserByUsername(username);
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Check if user is approved
+    if (user.status !== 'approved') {
+      return res.status(403).json({ error: 'Your account is pending admin approval' });
+    }
+
+    // Compare password
+    const isValidPassword = user.comparePassword(password);
+
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    // Set session
+    req.session.userId = user._id.toString();
+    req.session.username = user.username;
+    req.session.userRole = user.role;
+
+    res.json({
+      message: 'Login successful',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Error logging in' });
+  }
 });
 
 // Get current user (protected route)
-app.get('/api/auth/me', requireAuth, (req, res) => {
-  db.get(
-    'SELECT id, username, email, role, status, created_at FROM users WHERE id = ?',
-    [req.session.userId],
-    (err, user) => {
-      if (err || !user) {
-        return res.status(401).json({ error: 'User not found' });
-      }
-      res.json(user);
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    const user = await db.getUserById(req.session.userId);
+
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
     }
-  );
+
+    res.json({
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      created_at: user.created_at
+    });
+  } catch (err) {
+    console.error('Error fetching user:', err);
+    res.status(500).json({ error: 'Error fetching user' });
+  }
 });
 
 // Get user statistics
-app.get('/api/user/stats', requireAuth, (req, res) => {
-  db.serialize(() => {
-    db.get('SELECT COUNT(*) as total FROM files WHERE user_id = ?', [req.session.userId], (err, filesCount) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error fetching stats' });
-      }
-
-      db.get('SELECT SUM(file_size) as total FROM files WHERE user_id = ?', [req.session.userId], (err, storageSize) => {
-        if (err) {
-          return res.status(500).json({ error: 'Error fetching stats' });
-        }
-
-        res.json({
-          totalFiles: filesCount.total || 0,
-          totalStorage: storageSize.total || 0
-        });
-      });
-    });
-  });
+app.get('/api/user/stats', requireAuth, async (req, res) => {
+  try {
+    const stats = await db.getUserStats(req.session.userId);
+    res.json(stats);
+  } catch (err) {
+    console.error('Error fetching user stats:', err);
+    res.status(500).json({ error: 'Error fetching stats' });
+  }
 });
 
 // Logout
@@ -284,171 +307,155 @@ app.post('/api/auth/logout', (req, res) => {
 // Admin Routes
 
 // Get pending users
-app.get('/api/admin/pending-users', requireAdmin, (req, res) => {
-  db.all(
-    'SELECT id, username, email, created_at FROM users WHERE status = ? ORDER BY created_at DESC',
-    ['pending'],
-    (err, users) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error fetching pending users' });
-      }
-      res.json(users || []);
-    }
-  );
+app.get('/api/admin/pending-users', requireAdmin, async (req, res) => {
+  try {
+    const users = await db.getPendingUsers();
+    res.json(users || []);
+  } catch (err) {
+    console.error('Error fetching pending users:', err);
+    res.status(500).json({ error: 'Error fetching pending users' });
+  }
 });
 
 // Approve user
-app.post('/api/admin/approve-user/:userId', requireAdmin, (req, res) => {
-  const { userId } = req.params;
+app.post('/api/admin/approve-user/:userId', requireAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
 
-  db.run(
-    'UPDATE users SET status = ?, approved_by = ?, approved_at = datetime("now") WHERE id = ?',
-    ['approved', req.session.userId, userId],
-    (err) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error approving user' });
-      }
-      res.json({ message: 'User approved successfully' });
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
     }
-  );
+
+    const updated = await db.approveUser(userId, req.session.userId);
+
+    if (!updated) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ message: 'User approved successfully' });
+  } catch (err) {
+    console.error('Error approving user:', err);
+    res.status(500).json({ error: 'Error approving user' });
+  }
 });
 
 // Reject user
-app.post('/api/admin/reject-user/:userId', requireAdmin, (req, res) => {
-  const { userId } = req.params;
+app.post('/api/admin/reject-user/:userId', requireAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
 
-  db.run(
-    'UPDATE users SET status = ? WHERE id = ?',
-    ['rejected', userId],
-    (err) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error rejecting user' });
-      }
-      res.json({ message: 'User rejected' });
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
     }
-  );
+
+    const updated = await db.rejectUser(userId);
+
+    if (!updated) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ message: 'User rejected' });
+  } catch (err) {
+    console.error('Error rejecting user:', err);
+    res.status(500).json({ error: 'Error rejecting user' });
+  }
 });
 
 // Get all users
-app.get('/api/admin/users', requireAdmin, (req, res) => {
-  db.all(
-    'SELECT id, username, email, role, status, created_at FROM users ORDER BY created_at DESC',
-    (err, users) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error fetching users' });
-      }
-      res.json(users || []);
-    }
-  );
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const users = await db.getAllUsers();
+    res.json(users || []);
+  } catch (err) {
+    console.error('Error fetching users:', err);
+    res.status(500).json({ error: 'Error fetching users' });
+  }
 });
 
 // Get dashboard statistics
-app.get('/api/admin/stats', requireAdmin, (req, res) => {
-  db.serialize(() => {
-    db.get('SELECT COUNT(*) as total FROM users', (err, usersCount) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error fetching stats' });
-      }
-
-      db.get('SELECT COUNT(*) as pending FROM users WHERE status = ?', ['pending'], (err, pendingCount) => {
-        if (err) {
-          return res.status(500).json({ error: 'Error fetching stats' });
-        }
-
-        db.get('SELECT COUNT(*) as total FROM files', (err, filesCount) => {
-          if (err) {
-            return res.status(500).json({ error: 'Error fetching stats' });
-          }
-
-          db.get('SELECT SUM(file_size) as total FROM files', (err, storageSize) => {
-            if (err) {
-              return res.status(500).json({ error: 'Error fetching stats' });
-            }
-
-            res.json({
-              totalUsers: usersCount.total,
-              pendingApprovals: pendingCount.pending,
-              totalFiles: filesCount.total,
-              totalStorage: storageSize.total || 0
-            });
-          });
-        });
-      });
-    });
-  });
+app.get('/api/admin/stats', requireAdmin, async (req, res) => {
+  try {
+    const stats = await db.getAdminStats();
+    res.json(stats);
+  } catch (err) {
+    console.error('Error fetching admin stats:', err);
+    res.status(500).json({ error: 'Error fetching stats' });
+  }
 });
 
 // File Routes
 
 // Upload file to Cloudinary
-app.post('/api/files/upload', requireAuth, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
-
-  const { originalname, size, mimetype, filename } = req.file;
-  // Use secure_url returned by Cloudinary (do NOT modify this URL)
-  const cloudinaryUrl = req.file.secure_url || req.file.path; // secure_url is preferred
-  const cloudinaryPublicId = req.file.filename; // Public ID from Cloudinary
-  const { department = 'mainoffice', category = 'report' } = req.body;
-
-  // Log detailed info for PDF and ZIP files
-  const ext = path.extname(originalname).toLowerCase();
-  if (['.pdf', '.zip', '.rar', '.7z'].includes(ext)) {
-    console.log(`[UPLOAD] ${ext.toUpperCase()} File: ${originalname}`);
-    console.log(`[UPLOAD] Size: ${(size / 1024 / 1024).toFixed(2)}MB, MIME: ${mimetype}`);
-    console.log(`[UPLOAD] Cloudinary Public ID: ${cloudinaryPublicId}`);
-    console.log(`[UPLOAD] Cloudinary URL: ${cloudinaryUrl}`);
-  } else {
-    console.log(`[UPLOAD] File: ${originalname}, Public ID: ${cloudinaryPublicId}, URL: ${cloudinaryUrl}`);
-  }
-
-  // Check for duplicate in last 5 seconds
-  const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
-  
-  db.get(
-    'SELECT id FROM files WHERE user_id = ? AND original_filename = ? AND cloudinary_id = ? AND uploaded_at > ?',
-    [req.session.userId, originalname, cloudinaryPublicId, fiveSecondsAgo],
-    (err, duplicateFile) => {
-      if (err) {
-        console.error('[UPLOAD] Error checking duplicates:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
-
-      if (duplicateFile) {
-        console.log('[UPLOAD] Duplicate detected, skipping');
-        return res.status(400).json({ 
-          error: 'This file was just uploaded. Please wait.',
-          isSkipped: true 
-        });
-      }
-
-      // Insert into database
-      db.run(
-        'INSERT INTO files (user_id, filename, original_filename, file_size, file_type, cloudinary_url, cloudinary_id, department, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [req.session.userId, cloudinaryPublicId, originalname, size, mimetype, cloudinaryUrl, cloudinaryPublicId, department, category],
-        function(err) {
-          if (err) {
-            console.error('[UPLOAD] Database insert error:', err);
-            return res.status(500).json({ error: 'Error saving file' });
-          }
-
-          console.log(`[UPLOAD] ✅ File saved successfully, ID: ${this.lastID}`);
-          res.json({
-            message: 'File uploaded successfully',
-            file: {
-              id: this.lastID,
-              filename: originalname,
-              size,
-              department,
-              category,
-              uploaded_at: new Date().toISOString()
-            }
-          });
-        }
-      );
+app.post('/api/files/upload', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
     }
-  );
+
+    const { originalname, size, mimetype, filename } = req.file;
+    // Use secure_url returned by Cloudinary (do NOT modify this URL)
+    const cloudinaryUrl = req.file.secure_url || req.file.path;
+    const cloudinaryPublicId = req.file.filename; // Public ID from Cloudinary
+    const { department = 'mainoffice', category = 'report' } = req.body;
+
+    // Log detailed info for PDF and ZIP files
+    const ext = path.extname(originalname).toLowerCase();
+    if (['.pdf', '.zip', '.rar', '.7z'].includes(ext)) {
+      console.log(`[UPLOAD] ${ext.toUpperCase()} File: ${originalname}`);
+      console.log(`[UPLOAD] Size: ${(size / 1024 / 1024).toFixed(2)}MB, MIME: ${mimetype}`);
+      console.log(`[UPLOAD] Cloudinary Public ID: ${cloudinaryPublicId}`);
+      console.log(`[UPLOAD] Cloudinary URL: ${cloudinaryUrl}`);
+    } else {
+      console.log(`[UPLOAD] File: ${originalname}, Public ID: ${cloudinaryPublicId}, URL: ${cloudinaryUrl}`);
+    }
+
+    // Check for duplicate in last 5 seconds
+    const duplicateFile = await db.checkDuplicate(
+      req.session.userId,
+      originalname,
+      cloudinaryPublicId,
+      5
+    );
+
+    if (duplicateFile) {
+      console.log('[UPLOAD] Duplicate detected, skipping');
+      return res.status(400).json({
+        error: 'This file was just uploaded. Please wait.',
+        isSkipped: true
+      });
+    }
+
+    // Insert into database
+    const file = await db.uploadFile(
+      req.session.userId,
+      cloudinaryPublicId,
+      originalname,
+      size,
+      mimetype,
+      cloudinaryUrl,
+      cloudinaryPublicId,
+      department,
+      category
+    );
+
+    console.log(`[UPLOAD] ✅ File saved successfully, ID: ${file._id}`);
+    res.json({
+      message: 'File uploaded successfully',
+      file: {
+        id: file._id,
+        filename: originalname,
+        size,
+        department,
+        category,
+        uploaded_at: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    console.error('[UPLOAD] Error:', err);
+    res.status(500).json({ error: 'Upload failed: ' + err.message });
+  }
 });
 
 // Error handling for upload route
@@ -461,95 +468,93 @@ app.use((err, req, res, next) => {
 });
 
 // List user files
-app.get('/api/files', requireAuth, (req, res) => {
-  const { department = 'mainoffice', category = 'report' } = req.query;
+app.get('/api/files', requireAuth, async (req, res) => {
+  try {
+    const { department = 'mainoffice', category = 'report' } = req.query;
 
-  db.all(
-    'SELECT id, original_filename as filename, file_size as size, department, category, uploaded_at FROM files WHERE user_id = ? AND department = ? AND category = ? ORDER BY uploaded_at DESC',
-    [req.session.userId, department, category],
-    (err, files) => {
-      if (err) {
-        return res.status(500).json({ error: 'Error retrieving files' });
-      }
-      res.json(files || []);
-    }
-  );
+    const files = await db.getUserFiles(req.session.userId, department, category);
+    res.json(files || []);
+  } catch (err) {
+    console.error('Error retrieving files:', err);
+    res.status(500).json({ error: 'Error retrieving files' });
+  }
 });
 
 // Download file
 // Download file from Cloudinary with fl_attachment to force download (not open in browser)
-app.get('/api/files/:fileId/download', requireAuth, (req, res) => {
-  const { fileId } = req.params;
+app.get('/api/files/:fileId/download', requireAuth, async (req, res) => {
+  try {
+    const { fileId } = req.params;
 
-  db.get(
-    'SELECT cloudinary_url, original_filename FROM files WHERE id = ? AND user_id = ?',
-    [fileId, req.session.userId],
-    (err, file) => {
-      if (err) {
-        console.error('[DOWNLOAD] Database error:', err);
-        return res.status(500).json({ error: 'Database error' });
-      }
-      
-      if (!file) {
-        console.error('[DOWNLOAD] File not found for user:', req.session.userId);
-        return res.status(404).json({ error: 'File not found' });
-      }
-
-      if (!file.cloudinary_url) {
-        console.error('[DOWNLOAD] Cloudinary URL not available for file:', fileId);
-        return res.status(404).json({ error: 'File URL not available' });
-      }
-
-      console.log(`[DOWNLOAD] File: ${file.original_filename}`);
-
-      // Use Cloudinary fl_attachment transformation to force download
-      // Add fl_attachment to beginning of the path when inserting after /upload/
-      let downloadUrl = file.cloudinary_url;
-      
-      // Simply add fl_attachment flag as a transformation parameter before the file path
-      if (downloadUrl.includes('/upload/')) {
-        // Insert fl_attachment right after /upload/
-        downloadUrl = downloadUrl.replace('/upload/', '/upload/fl_attachment/');
-      }
-      
-      console.log(`[DOWNLOAD] Download URL: ${downloadUrl}`);
-      
-      // Redirect to Cloudinary URL - forces browser to download instead of open
-      res.redirect(downloadUrl);
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(fileId)) {
+      return res.status(400).json({ error: 'Invalid file ID' });
     }
-  );
+
+    const file = await db.getFileById(fileId, req.session.userId);
+
+    if (!file) {
+      console.error('[DOWNLOAD] File not found for user:', req.session.userId);
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    if (!file.cloudinary_url) {
+      console.error('[DOWNLOAD] Cloudinary URL not available for file:', fileId);
+      return res.status(404).json({ error: 'File URL not available' });
+    }
+
+    console.log(`[DOWNLOAD] File: ${file.original_filename}`);
+
+    // Use Cloudinary fl_attachment transformation to force download
+    let downloadUrl = file.cloudinary_url;
+
+    if (downloadUrl.includes('/upload/')) {
+      downloadUrl = downloadUrl.replace('/upload/', '/upload/fl_attachment/');
+    }
+
+    console.log(`[DOWNLOAD] Download URL: ${downloadUrl}`);
+
+    // Redirect to Cloudinary URL - forces browser to download instead of open
+    res.redirect(downloadUrl);
+  } catch (err) {
+    console.error('[DOWNLOAD] Error:', err);
+    res.status(500).json({ error: 'Download error' });
+  }
 });
 
 // Delete file from Cloudinary and database
-app.delete('/api/files/:fileId', requireAuth, (req, res) => {
-  const { fileId } = req.params;
+app.delete('/api/files/:fileId', requireAuth, async (req, res) => {
+  try {
+    const { fileId } = req.params;
 
-  db.get(
-    'SELECT cloudinary_id FROM files WHERE id = ? AND user_id = ?',
-    [fileId, req.session.userId],
-    (err, file) => {
-      if (err || !file) {
-        return res.status(404).json({ error: 'File not found' });
-      }
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(fileId)) {
+      return res.status(400).json({ error: 'Invalid file ID' });
+    }
 
-      // Delete from Cloudinary
-      if (file.cloudinary_id) {
-        cloudinary.uploader.destroy(file.cloudinary_id, (error, result) => {
-          if (error) {
-            console.error('Cloudinary delete error:', error);
-          }
-        });
-      }
+    const file = await db.getFileById(fileId, req.session.userId);
 
-      // Delete from database
-      db.run('DELETE FROM files WHERE id = ?', [fileId], (err) => {
-        if (err) {
-          return res.status(500).json({ error: 'Error deleting file' });
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Delete from Cloudinary
+    if (file.cloudinary_id) {
+      cloudinary.uploader.destroy(file.cloudinary_id, (error, result) => {
+        if (error) {
+          console.error('Cloudinary delete error:', error);
         }
-        res.json({ message: 'File deleted successfully' });
       });
     }
-  );
+
+    // Delete from database
+    await db.deleteFile(fileId, req.session.userId);
+
+    res.json({ message: 'File deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting file:', err);
+    res.status(500).json({ error: 'Error deleting file' });
+  }
 });
 
 // Serve main page
@@ -557,6 +562,5 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+// Start server
+initializeServer();

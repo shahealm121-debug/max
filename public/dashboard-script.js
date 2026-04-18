@@ -351,7 +351,7 @@ function filterFiles() {
   }
 
   filesList.innerHTML = filesToShow.map(file => `
-    <div class="file-item">
+    <div class="file-item" data-file-id="${file.id}" data-filename="${escapeHtml(file.filename)}">
       <div class="file-info">
         <div class="file-name">📄 ${escapeHtml(file.filename)}</div>
         <div class="file-meta">
@@ -359,12 +359,37 @@ function filterFiles() {
         </div>
       </div>
       <div class="file-actions">
-        <button onclick="downloadFile(${file.id}, '${escapeHtml(file.filename)}')" class="btn-download">Download</button>
-        <button onclick="deleteFile(${file.id})" class="btn-delete">Delete</button>
+        <button class="btn-download" data-file-id="${file.id}" data-filename="${escapeHtml(file.filename)}">Download</button>
+        <button class="btn-delete" data-file-id="${file.id}">Delete</button>
       </div>
     </div>
   `).join('');
+  
+  // Attach event listeners using delegation
+  attachFileEventListeners();
   updatePagination(currentPage, totalPages);
+}
+
+// Attach event listeners to download and delete buttons
+function attachFileEventListeners() {
+  const filesList = document.getElementById('filesList');
+  
+  // Download button listeners
+  filesList.querySelectorAll('.btn-download').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const fileId = btn.getAttribute('data-file-id');
+      const filename = btn.getAttribute('data-filename');
+      downloadFile(fileId, filename);
+    });
+  });
+  
+  // Delete button listeners
+  filesList.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const fileId = btn.getAttribute('data-file-id');
+      deleteFile(fileId);
+    });
+  });
 }
 
 function updatePagination(page, totalPages) {
@@ -436,15 +461,28 @@ function deleteFile(fileId) {
           credentials: 'include'
         });
 
-        const data = await response.json();
-
         if (!response.ok) {
+          const data = await response.json();
           showToast(data.error || 'Delete failed', 'error');
           return;
         }
 
+        // Remove from local array immediately (live render)
+        allFiles = allFiles.filter(file => file.id !== fileId);
+        
+        // Remove file item from DOM with animation
+        const fileItem = document.querySelector(`[data-file-id="${fileId}"]`);
+        if (fileItem) {
+          fileItem.style.opacity = '0';
+          fileItem.style.transform = 'translateX(-20px)';
+          fileItem.style.transition = 'all 0.3s ease';
+          setTimeout(() => {
+            fileItem.remove();
+            filterFiles(); // Refresh pagination
+          }, 300);
+        }
+
         showToast('File deleted successfully', 'success');
-        loadFiles(); // Reload file list
       } catch (error) {
         showToast('Error deleting file', 'error');
         console.error('Delete error:', error);

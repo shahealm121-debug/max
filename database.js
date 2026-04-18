@@ -1,127 +1,231 @@
-import sqlite3 from 'sqlite3';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import bcryptjs from 'bcryptjs';
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+import User from './models/User.js';
+import File from './models/File.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = path.join(__dirname, 'users.db');
+dotenv.config();
 
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Error opening database:', err);
-  } else {
-    console.log('Connected to SQLite database');
-    initDatabase();
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/dms';
+
+let isConnected = false;
+
+export const connectDB = async () => {
+  if (isConnected) {
+    console.log('Using existing database connection');
+    return;
   }
-});
 
-function initDatabase() {
-  // Create users table with role and approval status
-  db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      role TEXT DEFAULT 'user',
-      status TEXT DEFAULT 'pending',
-      approved_by INTEGER,
-      approved_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `, (err) => {
-    if (err) {
-      console.error('Error creating users table:', err);
-    } else {
-      console.log('Users table ready');
-      createAdminUser();
-    }
-  });
-
-  // Create files table
-  db.run(`
-    CREATE TABLE IF NOT EXISTS files (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      filename TEXT NOT NULL,
-      original_filename TEXT NOT NULL,
-      file_size INTEGER NOT NULL,
-      file_type TEXT NOT NULL,
-      cloudinary_url TEXT,
-      cloudinary_id TEXT,
-      department TEXT DEFAULT 'mainoffice',
-      category TEXT DEFAULT 'report',
-      uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `, (err) => {
-    if (err) {
-      console.error('Error creating files table:', err);
-    } else {
-      console.log('Files table ready');
-      ensureFilesTableColumns();
-    }
-  });
-
-  function ensureFilesTableColumns() {
-    db.all('PRAGMA table_info(files)', (err, columns) => {
-      if (err || !columns) {
-        return;
-      }
-
-      const names = columns.map(c => c.name);
-
-      if (!names.includes('department')) {
-        db.run("ALTER TABLE files ADD COLUMN department TEXT DEFAULT 'mainoffice'", (alterErr) => {
-          if (alterErr) {
-            console.error('Error adding department column:', alterErr);
-          }
-        });
-      }
-
-      if (!names.includes('category')) {
-        db.run("ALTER TABLE files ADD COLUMN category TEXT DEFAULT 'report'", (alterErr) => {
-          if (alterErr) {
-            console.error('Error adding category column:', alterErr);
-          }
-        });
-      }
-
-      if (!names.includes('cloudinary_url')) {
-        db.run("ALTER TABLE files ADD COLUMN cloudinary_url TEXT", (alterErr) => {
-          if (alterErr) {
-            console.error('Error adding cloudinary_url column:', alterErr);
-          }
-        });
-      }
-
-      if (!names.includes('cloudinary_id')) {
-        db.run("ALTER TABLE files ADD COLUMN cloudinary_id TEXT", (alterErr) => {
-          if (alterErr) {
-            console.error('Error adding cloudinary_id column:', alterErr);
-          }
-        });
-      }
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
     });
+    
+    isConnected = true;
+    console.log('✅ Connected to MongoDB successfully');
+    
+    // Create default admin user if doesn't exist
+    await createAdminUser();
+    
+  } catch (err) {
+    console.error('❌ Error connecting to MongoDB:', err.message);
+    process.exit(1);
+  }
+};
+
+export const disconnectDB = async () => {
+  if (isConnected) {
+    await mongoose.disconnect();
+    isConnected = false;
+    console.log('Disconnected from MongoDB');
+  }
+};
+
+async function createAdminUser() {
+  try {
+    const adminExists = await User.findOne({ username: 'admin' });
+    
+    if (!adminExists) {
+      const admin = new User({
+        username: 'admin',
+        email: 'admin@localhost.local',
+        password: 'admin123',
+        role: 'admin',
+        status: 'approved'
+      });
+      
+      await admin.save();
+      console.log('✅ Admin user created (username: admin, password: admin123)');
+    } else {
+      console.log('✅ Admin user already exists');
+    }
+  } catch (err) {
+    console.error('Error creating admin user:', err);
   }
 }
 
-// Create default admin user if doesn't exist
-function createAdminUser() {
-  const adminPassword = bcryptjs.hashSync('admin123', 10);
+// Database operations wrapper
+export const db = {
+  User,
+  File,
   
-  db.run(
-    `INSERT OR IGNORE INTO users (username, email, password, role, status, created_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-    ['admin', 'admin@localhost.local', adminPassword, 'admin', 'approved'],
-    (err) => {
-      if (err) {
-        console.error('Error creating admin user:', err);
-      } else {
-        console.log('Admin user ready (username: admin, password: admin123)');
-      }
+  // User operations
+  createUser: async (username, email, password, role = 'user', status = 'pending') => {
+    try {
+      const user = new User({ username, email, password, role, status });
+      return await user.save();
+    } catch (err) {
+      throw err;
     }
-  );
-}
+  },
+
+  getUserByUsername: async (username) => {
+    return await User.findOne({ username });
+  },
+
+  getUserById: async (id) => {
+    return await User.findById(id);
+  },
+
+  getAllUsers: async () => {
+    return await User.find().select('-password').sort({ created_at: -1 });
+  },
+
+  getPendingUsers: async () => {
+    return await User.find({ status: 'pending' }).sort({ created_at: -1 });
+  },
+
+  approveUser: async (userId, adminId) => {
+    return await User.findByIdAndUpdate(
+      userId,
+      {
+        status: 'approved',
+        approved_by: adminId,
+        approved_at: new Date()
+      },
+      { new: true }
+    );
+  },
+
+  rejectUser: async (userId) => {
+    return await User.findByIdAndUpdate(
+      userId,
+      { status: 'rejected' },
+      { new: true }
+    );
+  },
+
+  // File operations
+  uploadFile: async (userId, filename, originalFilename, size, mimetype, cloudinaryUrl, cloudinaryId, department, category) => {
+    try {
+      const file = new File({
+        user_id: userId,
+        filename,
+        original_filename: originalFilename,
+        file_size: size,
+        file_type: mimetype,
+        cloudinary_url: cloudinaryUrl,
+        cloudinary_id: cloudinaryId,
+        department,
+        category
+      });
+      return await file.save();
+    } catch (err) {
+      throw err;
+    }
+  },
+
+  checkDuplicate: async (userId, originalFilename, cloudinaryId, withinSeconds = 5) => {
+    const fiveSecondsAgo = new Date(Date.now() - withinSeconds * 1000);
+    return await File.findOne({
+      user_id: userId,
+      original_filename: originalFilename,
+      cloudinary_id: cloudinaryId,
+      uploaded_at: { $gt: fiveSecondsAgo }
+    });
+  },
+
+  getUserFiles: async (userId, department, category) => {
+    const files = await File.find({
+      user_id: userId,
+      department,
+      category
+    })
+      .select('_id original_filename file_size department category uploaded_at')
+      .sort({ uploaded_at: -1 })
+      .lean();
+    
+    // Transform field names to match frontend expectations
+    return files.map(file => ({
+      id: file._id,
+      filename: file.original_filename,
+      size: file.file_size,
+      department: file.department,
+      category: file.category,
+      uploaded_at: file.uploaded_at
+    }));
+  },
+
+  getFileById: async (fileId, userId) => {
+    return await File.findOne({
+      _id: fileId,
+      user_id: userId
+    });
+  },
+
+  deleteFile: async (fileId, userId) => {
+    return await File.findOneAndDelete({
+      _id: fileId,
+      user_id: userId
+    });
+  },
+
+  getUserStats: async (userId) => {
+    const files = await File.aggregate([
+      { $match: { user_id: new mongoose.Types.ObjectId(userId) } },
+      {
+        $group: {
+          _id: null,
+          totalFiles: { $sum: 1 },
+          totalStorage: { $sum: '$file_size' }
+        }
+      }
+    ]);
+    
+    return files.length > 0
+      ? { totalFiles: files[0].totalFiles, totalStorage: files[0].totalStorage }
+      : { totalFiles: 0, totalStorage: 0 };
+  },
+
+  getAdminStats: async () => {
+    const userStats = await User.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalUsers: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const pendingStats = await User.countDocuments({ status: 'pending' });
+
+    const fileStats = await File.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalFiles: { $sum: 1 },
+          totalStorage: { $sum: '$file_size' }
+        }
+      }
+    ]);
+
+    return {
+      totalUsers: userStats.length > 0 ? userStats[0].totalUsers : 0,
+      pendingApprovals: pendingStats,
+      totalFiles: fileStats.length > 0 ? fileStats[0].totalFiles : 0,
+      totalStorage: fileStats.length > 0 ? fileStats[0].totalStorage : 0
+    };
+  }
+};
 
 export default db;

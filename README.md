@@ -1,6 +1,6 @@
 # Login System with Drive
 
-A secure login/signup system with file storage functionality built with Node.js, Express, and SQLite.
+A secure login/signup system with cloud file storage functionality built with Node.js, Express, MongoDB, and Cloudinary.
 
 ## Features
 
@@ -10,23 +10,48 @@ A secure login/signup system with file storage functionality built with Node.js,
 - ✅ Password validation
 - ✅ Protected routes
 - ✅ User dashboard
-- ✅ **File upload & download** (Drive)
+- ✅ **File upload & download** (Cloudinary cloud storage)
 - ✅ **File management** (delete, list)
+- ✅ **Persistent cloud database** (MongoDB Atlas)
+- ✅ **Metadata persistence** - survives server restarts
 - ✅ Responsive UI with tabbed interface
+- ✅ Admin approval system
 
 ## Prerequisites
 
 - Node.js (v14 or higher)
 - npm
+- MongoDB Atlas account (free tier: [mongodb.com/cloud/atlas](https://mongodb.com/cloud/atlas))
+- Cloudinary account (free tier: [cloudinary.com](https://cloudinary.com))
 
 ## Installation
 
-1. Install dependencies:
+### 1. Install Dependencies
 ```bash
 npm install
 ```
 
-2. Start the server:
+### 2. Configure Environment Variables
+
+Create `.env` file in project root:
+
+```env
+# MongoDB - Persistent cloud database
+MONGODB_URI=mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/dms?retryWrites=true&w=majority
+
+# Cloudinary - Cloud file storage
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# Server
+PORT=3000
+SESSION_SECRET=your-session-secret-change-in-production
+NODE_ENV=development
+```
+
+### 3. Start the Server
+
 ```bash
 npm start
 ```
@@ -36,25 +61,61 @@ Or for development with auto-reload:
 npm run dev
 ```
 
-3. Open your browser and navigate to:
+### 4. Open in Browser
+
 ```
 http://localhost:3000
 ```
+
+## Setup Guides
+
+- **[MongoDB Setup](./MONGODB_SETUP.md)** - Configure persistent cloud database
+- **[Cloudinary Setup](./CLOUDINARY_SETUP.md)** - Configure cloud file storage
 
 ## Project Structure
 
 ```
 .
 ├── server.js              # Express server and API routes
-├── database.js            # SQLite database initialization
+├── database.js            # MongoDB connection and models
+├── models/
+│   ├── User.js            # MongoDB User schema
+│   └── File.js            # MongoDB File schema
 ├── package.json           # Project dependencies
-├── .env                   # Environment variables
-├── uploads/               # User file storage (auto-created)
+├── .env                   # Environment variables (MONGODB_URI, CLOUDINARY_*)
 └── public/
     ├── index.html         # Main HTML page
     ├── styles.css         # Styling
     └── script.js          # Frontend JavaScript
 ```
+
+## Database (MongoDB Collections)
+
+### Users Collection
+- `_id` - User ID (ObjectId)
+- `username` - Username (unique)
+- `email` - Email address (unique)
+- `password` - Hashed password (bcrypt)
+- `role` - 'user' or 'admin'
+- `status` - 'pending', 'approved', or 'rejected'
+- `approved_by` - Admin user ID who approved them
+- `approved_at` - Approval timestamp
+- `created_at` - Account creation timestamp
+
+### Files Collection
+- `_id` - File ID (ObjectId)
+- `user_id` - Owner's user ID (ObjectId reference)
+- `filename` - Cloudinary public ID
+- `original_filename` - Original uploaded filename
+- `file_size` - File size in bytes
+- `file_type` - MIME type
+- `cloudinary_url` - Persistent Cloudinary URL ⭐
+- `cloudinary_id` - Cloudinary public ID
+- `department` - Document department
+- `category` - Document category
+- `uploaded_at` - Upload timestamp
+
+**The key improvement:** Both `cloudinary_url` and `cloudinary_id` are now **permanently stored in MongoDB**, so they survive server restarts!
 
 ## API Endpoints
 
@@ -102,9 +163,12 @@ http://localhost:3000
 ## Security Notes
 
 ⚠️ **Important for Production:**
-- Change the session secret in `server.js` (`your-secret-key-change-in-production`)
-- Use environment variables for sensitive data
+- Set MongoDB connection string via environment variables (never hardcode)
+- Secure Cloudinary credentials in `.env` (never commit to git)
+- Change the session secret to a random string (use `SESSION_SECRET` env var)
 - Enable HTTPS and set `secure: true` in session cookie
+- Add IP whitelisting to MongoDB Atlas Network Access
+- Enable MFA on MongoDB Atlas and Cloudinary accounts
 - Add input validation and rate limiting
 - Use a more robust password policy
 - Consider adding email verification
@@ -112,6 +176,22 @@ http://localhost:3000
 - Add file type validation and scanning
 - Implement storage quotas per user
 - Add logging and monitoring
+- Add `.env` to `.gitignore` (never commit secrets!)
+
+## Best Practices
+
+✅ Always use MongoDB Atlas security features:
+- Enable password authentication
+- Use strong passwords
+- Whitelist IP addresses
+- Enable backup features
+- Monitor cluster activity
+
+✅ Cloudinary security:
+- Store API secrets in environment variables
+- Use upload presets for public uploads
+- Implement resource-level access controls
+- Enable signing for URLs
 
 ## Usage
 
@@ -145,9 +225,11 @@ http://localhost:3000
 ## Dependencies
 
 - **express** - Web framework
-- **sqlite3** - Database
+- **mongoose** - MongoDB ODM (Object Document Mapper)
 - **bcryptjs** - Password hashing
 - **express-session** - Session management
+- **cloudinary** - Cloud file storage
+- **multer-storage-cloudinary** - Multer storage adapter for Cloudinary
 - **cors** - CORS support
 - **multer** - File upload handling
 - **dotenv** - Environment variables
